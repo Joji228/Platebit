@@ -2,6 +2,7 @@ package app.morsel.ai
 
 import android.util.Base64
 import app.morsel.data.AiSettings
+import app.morsel.data.ApiKind
 import app.morsel.data.Provider
 import app.morsel.data.SettingsRepository
 import kotlinx.coroutines.CancellationException
@@ -50,6 +51,8 @@ data class AnalysisResult(val meal: AiMeal, val provider: Provider, val model: S
 
 class AiException(message: String) : Exception(message)
 
+private const val ANTHROPIC_VERSION = "2023-06-01"
+
 private object Prompts {
     const val SYSTEM = """You are a precise nutrition estimation assistant inside a calorie tracking app.
 You receive one or more photos and/or a short description. Photos can show a plated meal, a nutrition facts label, food packaging, or raw ingredients of the same meal.
@@ -87,25 +90,24 @@ class AiService(private val settings: SettingsRepository) {
     private val jsonMedia = "application/json".toMediaType()
 
     /**
-     * Tries the primary provider first. If it fails and fallback is on, tries the other one
-     * (when it has a key) and reports why the primary was skipped.
+     * Tries the primary provider. Only when fallback is on, and a second provider is set up,
+     * does a failure move on to that one; the result then says why the first was skipped.
      */
     suspend fun analyze(images: List<ByteArray>, note: String?): AnalysisResult {
         val ai = settings.ai.first()
-        val order = if (ai.fallback) listOf(ai.primary) + Provider.entries.filter { it != ai.primary } else listOf(ai.primary)
-        val usable = order.filter { ai.keyFor(it).isNotBlank() }
-        if (usable.isEmpty()) {
-            throw AiException(
-                if (ai.fallback) "Add a DeepSeek or Gemini API key in Settings first."
-                else "Add a ${ai.primary.title} API key in Settings first, or turn on fallback.",
-            )
-        }
-
         val errors = mutableListOf<String>()
+        val order = listOfNotNull(ai.primary, ai.fallbackTarget)
+        if (!ai.isReady(ai.primary)) {
+            val missing = if (ai.primary.needsBaseUrl && ai.keyFor(ai.primary).isNotBlank()) "address" else "API key"
+            errors += "${ai.primary.title}: no $missing set. Add it in Settings → AI engine."
+        }
+        val usable = order.filter { ai.isReady(it) }
+        if (usable.isEmpty()) throw AiException(errors.joinToString("\n"))
+
         for (provider in usable) {
             try {
                 val model = resolveModel(provider, ai)
-                val raw = complete(provider, ai.keyFor(provider), model, images, Prompts.user(note, images.size))
+                val raw = complete(provider, ai, model, images, Prompts.user(note, images.size))
                 return AnalysisResult(parse(raw), provider, model, errors.joinToString("\n").ifBlank { null })
             } catch (e: CancellationException) {
                 throw e
@@ -117,13 +119,9 @@ class AiService(private val settings: SettingsRepository) {
     }
 
     /** Lists models the key can use. Doubles as a key check. */
-    suspend fun listModels(provider: Provider, key: String): List<String> = withContext(Dispatchers.IO) {
-        when (provider) {
-            Provider.DEEPSEEK -> {
-                val root = get("https://api.deepseek.com/models", mapOf("Authorization" to "Bearer $key"), provider)
-                root["data"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }.sorted()
-            }
-            Provider.GEMINI -> {
+    suspend fun listModels(provider: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
+        when (provider.kind) {
+            ApiKind.GEMINI -> {
                 val root = get(
                     "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
                     mapOf("x-goog-api-key" to key),
@@ -137,25 +135,59 @@ class AiService(private val settings: SettingsRepository) {
                     name?.takeIf { "generateContent" in methods && it.startsWith("gemini") }
                 }.sorted()
             }
+            ApiKind.ANTHROPIC -> {
+                val root = get(
+                    "https://api.anthropic.com/v1/models?limit=1000",
+                    mapOf("x-api-key" to key, "anthropic-version" to ANTHROPIC_VERSION),
+                    provider,
+                )
+                root["data"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }.sorted()
+            }
+            ApiKind.OPENAI_COMPATIBLE -> {
+                val root = get("$baseUrl/models", mapOf("Authorization" to "Bearer $key"), provider)
+                val ids = root["data"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
+                // OpenAI lists embeddings, speech and image models too; keep the ones that chat.
+                (if (provider == Provider.OPENAI) ids.filter(::isOpenAiChatModel) else ids).sorted()
+            }
         }
     }
 
-    /** Best default when the user hasn't picked a model: newest vision-capable fast model. */
-    fun pickDefault(provider: Provider, models: List<String>): String? = when (provider) {
-        // V4.1 Flash has native vision and is served as "deepseek-flash"; the legacy
-        // "deepseek-chat" alias is only a last resort.
-        Provider.DEEPSEEK ->
-            models.firstOrNull { it == "deepseek-flash" }
-                ?: models.filter { "flash" in it }.maxOrNull()
-                ?: models.filter { "vision" in it || "vl" in it }.maxOrNull()
-                ?: models.firstOrNull { it == "deepseek-chat" }
-                ?: models.maxOrNull()
-        Provider.GEMINI ->
-            models.firstOrNull { it == "gemini-flash-latest" }
-                ?: models.filter { m ->
-                    "flash" in m && listOf("lite", "image", "tts", "live", "audio", "exp", "preview", "thinking").none { it in m }
-                }.maxOrNull()
-                ?: models.firstOrNull { "flash" in it }
+    private fun isOpenAiChatModel(id: String): Boolean {
+        val chat = id.startsWith("gpt-") || id.startsWith("chatgpt") || Regex("^o\\d").containsMatchIn(id)
+        val other = listOf("audio", "realtime", "transcribe", "tts", "image", "embedding", "moderation", "whisper", "search", "instruct", "codex", "dall")
+        return chat && other.none { it in id }
+    }
+
+    /** Best default when the user hasn't picked a model: a recent, fast, vision-capable one. */
+    fun pickDefault(provider: Provider, models: List<String>): String? {
+        // Dated snapshots such as gpt-x-2025-08-07 are skipped in favour of the moving alias.
+        val aliases = models.filterNot { Regex("\\d{4}-?\\d{2}-?\\d{2}$").containsMatchIn(it) }
+        return when (provider) {
+            // V4.1 Flash has native vision and is served as "deepseek-flash"; the legacy
+            // "deepseek-chat" alias is only a last resort.
+            Provider.DEEPSEEK ->
+                models.firstOrNull { it == "deepseek-flash" }
+                    ?: models.filter { "flash" in it }.maxOrNull()
+                    ?: models.filter { "vision" in it || "vl" in it }.maxOrNull()
+                    ?: models.firstOrNull { it == "deepseek-chat" }
+                    ?: models.maxOrNull()
+            Provider.GEMINI ->
+                models.firstOrNull { it == "gemini-flash-latest" }
+                    ?: models.filter { m ->
+                        "flash" in m && listOf("lite", "image", "tts", "live", "audio", "exp", "preview", "thinking").none { it in m }
+                    }.maxOrNull()
+                    ?: models.firstOrNull { "flash" in it }
+            Provider.OPENAI ->
+                aliases.filter { "mini" in it && it.startsWith("gpt-") }.maxOrNull()
+                    ?: aliases.filter { it.startsWith("gpt-") }.maxOrNull()
+                    ?: models.maxOrNull()
+            Provider.ANTHROPIC ->
+                aliases.filter { "haiku" in it }.maxOrNull()
+                    ?: aliases.filter { "sonnet" in it }.maxOrNull()
+                    ?: models.maxOrNull()
+            // Unknown service: the user has to name the model themselves.
+            Provider.CUSTOM -> null
+        }
     }
 
     /** Automatic picks are cached for this session only, so newer models are picked up later. */
@@ -164,7 +196,8 @@ class AiService(private val settings: SettingsRepository) {
     private suspend fun resolveModel(provider: Provider, ai: AiSettings): String {
         ai.modelFor(provider).takeIf { it.isNotBlank() }?.let { return it }
         autoModels[provider]?.let { return it }
-        val picked = pickDefault(provider, listModels(provider, ai.keyFor(provider)))
+        if (provider == Provider.CUSTOM) throw AiException("Choose a model for Custom in Settings → AI engine.")
+        val picked = pickDefault(provider, listModels(provider, ai.keyFor(provider), ai.baseUrlFor(provider)))
             ?: throw AiException("No usable model found for this key")
         autoModels[provider] = picked
         return picked
@@ -172,21 +205,67 @@ class AiService(private val settings: SettingsRepository) {
 
     private suspend fun complete(
         provider: Provider,
-        key: String,
+        ai: AiSettings,
         model: String,
         images: List<ByteArray>,
         userText: String,
     ): String = withContext(Dispatchers.IO) {
+        val key = ai.keyFor(provider)
         val encoded = images.map { Base64.encodeToString(it, Base64.NO_WRAP) }
-        when (provider) {
-            Provider.GEMINI -> gemini(key, model, encoded, userText)
-            Provider.DEEPSEEK -> try {
-                deepseek(key, model, encoded, userText, jsonMode = true)
+        when (provider.kind) {
+            ApiKind.GEMINI -> gemini(key, model, encoded, userText)
+            ApiKind.ANTHROPIC -> anthropic(provider, key, model, encoded, userText)
+            ApiKind.OPENAI_COMPATIBLE -> try {
+                openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = true)
             } catch (e: HttpException) {
-                // Some models reject response_format; retry once without it.
-                if (e.code == 400 || e.code == 422) deepseek(key, model, encoded, userText, jsonMode = false) else throw e
+                // Some models reject response_format or a custom temperature; retry once without them.
+                if (e.code == 400 || e.code == 422) {
+                    openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = false)
+                } else {
+                    throw e
+                }
             }
         }
+    }
+
+    /** Claude's Messages API: images are base64 blocks, and the answer is a list of text blocks. */
+    private fun anthropic(provider: Provider, key: String, model: String, images: List<String>, userText: String): String {
+        val body = buildJsonObject {
+            put("model", model)
+            put("max_tokens", 2048)
+            put("temperature", 0.2)
+            put("system", Prompts.SYSTEM)
+            putJsonArray("messages") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("content") {
+                        images.forEach { data ->
+                            addJsonObject {
+                                put("type", "image")
+                                putJsonObject("source") {
+                                    put("type", "base64")
+                                    put("media_type", "image/jpeg")
+                                    put("data", data)
+                                }
+                            }
+                        }
+                        addJsonObject {
+                            put("type", "text")
+                            put("text", userText)
+                        }
+                    }
+                }
+            }
+        }
+        val root = post(
+            "https://api.anthropic.com/v1/messages",
+            mapOf("x-api-key" to key, "anthropic-version" to ANTHROPIC_VERSION),
+            body,
+            provider,
+        )
+        val text = root["content"]?.jsonArray.orEmpty()
+            .joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty() }
+        return text.ifBlank { throw AiException("${provider.title} returned no answer") }
     }
 
     private fun gemini(key: String, model: String, images: List<String>, userText: String): String {
@@ -227,7 +306,20 @@ class AiService(private val settings: SettingsRepository) {
         return parts.joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty() }
     }
 
-    private fun deepseek(key: String, model: String, images: List<String>, userText: String, jsonMode: Boolean): String {
+    /**
+     * The chat-completions format that DeepSeek, OpenAI and most other services share.
+     * [strict] adds JSON mode and a low temperature; OpenAI's newer models reject a custom
+     * temperature, so it is only sent to the others.
+     */
+    private fun openAiCompatible(
+        provider: Provider,
+        baseUrl: String,
+        key: String,
+        model: String,
+        images: List<String>,
+        userText: String,
+        strict: Boolean,
+    ): String {
         val body = buildJsonObject {
             put("model", model)
             putJsonArray("messages") {
@@ -255,19 +347,21 @@ class AiService(private val settings: SettingsRepository) {
                     }
                 }
             }
-            put("temperature", 0.2)
             put("stream", false)
-            if (jsonMode) putJsonObject("response_format") { put("type", "json_object") }
+            if (strict) {
+                if (provider != Provider.OPENAI) put("temperature", 0.2)
+                putJsonObject("response_format") { put("type", "json_object") }
+            }
         }
         val root = post(
-            "https://api.deepseek.com/chat/completions",
+            "$baseUrl/chat/completions",
             mapOf("Authorization" to "Bearer $key"),
             body,
-            Provider.DEEPSEEK,
+            provider,
         )
         return root["choices"]?.jsonArray?.firstOrNull()?.jsonObject
             ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
-            ?: throw AiException("DeepSeek returned no answer")
+            ?: throw AiException("${provider.title} returned no answer")
     }
 
     private fun parse(raw: String): AiMeal {

@@ -3,13 +3,10 @@ package app.morsel.ui.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.morsel.AppContainer
+import app.morsel.data.PlanState
 import app.morsel.data.db.MealWithItems
-import app.morsel.data.db.WeightEntity
 import app.morsel.data.db.macros
 import app.morsel.domain.Macros
-import app.morsel.domain.Nutrition
-import app.morsel.domain.Targets
-import app.morsel.domain.UserProfile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,38 +20,33 @@ import java.time.LocalDate
 data class DashboardState(
     val loading: Boolean = true,
     val date: LocalDate = LocalDate.now(),
-    val profile: UserProfile? = null,
-    val targets: Targets? = null,
+    val plan: PlanState = PlanState(),
     val eaten: Macros = Macros(),
     val waterMl: Int = 0,
     val meals: List<MealWithItems> = emptyList(),
-    val weights: List<WeightEntity> = emptyList(),
-    val currentWeight: Double? = null,
-)
+) {
+    val profile get() = plan.profile
+    val targets get() = plan.targets
+    val currentWeight get() = plan.currentWeight
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel(private val app: AppContainer) : ViewModel() {
     private val date = MutableStateFlow(LocalDate.now())
 
-    val state: StateFlow<DashboardState> = combine(
-        date,
-        app.settings.profile,
-        app.repository.weights(),
-        date.flatMapLatest { app.repository.mealsFor(it) },
-        date.flatMapLatest { app.repository.waterFor(it) },
-    ) { day, profile, weights, meals, water ->
-        val current = weights.lastOrNull()?.kg ?: profile?.startWeightKg
-        DashboardState(
-            loading = false,
-            date = day,
-            profile = profile,
-            targets = if (profile != null && current != null) Nutrition.targets(profile, current) else null,
-            eaten = meals.fold(Macros()) { acc, meal -> acc + meal.macros() },
-            waterMl = water,
-            meals = meals,
-            weights = weights,
-            currentWeight = current,
-        )
+    // The date travels inside each emission, so the day and its meals always change together;
+    // otherwise a swipe could briefly show the new date over the old day's meals.
+    val state: StateFlow<DashboardState> = date.flatMapLatest { day ->
+        combine(app.plans.plan, app.repository.mealsFor(day), app.repository.waterFor(day)) { plan, meals, water ->
+            DashboardState(
+                loading = false,
+                date = day,
+                plan = plan,
+                eaten = meals.fold(Macros()) { acc, meal -> acc + meal.macros() },
+                waterMl = water,
+                meals = meals,
+            )
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardState())
 
     fun previousDay() {
@@ -75,5 +67,9 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
 
     fun logWeight(kg: Double) {
         viewModelScope.launch { app.repository.logWeight(kg) }
+    }
+
+    fun deleteWeight(id: Long) {
+        viewModelScope.launch { app.repository.deleteWeight(id) }
     }
 }

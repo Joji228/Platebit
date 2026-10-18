@@ -128,7 +128,20 @@ interface MealDao {
 
     @Query("SELECT photoPath FROM meals WHERE photoPath IS NOT NULL")
     suspend fun photoPaths(): List<String>
+
+    /** Total calories per logged day, for the adaptive target. */
+    @Query(
+        """
+        SELECT m.date AS date, SUM(f.grams * f.kcalPer100 / 100.0) AS kcal
+        FROM meals m JOIN food_items f ON f.mealId = m.id
+        WHERE m.date BETWEEN :from AND :to
+        GROUP BY m.date
+        """,
+    )
+    fun observeDailyKcal(from: String, to: String): Flow<List<DailyKcal>>
 }
+
+data class DailyKcal(val date: String, val kcal: Double)
 
 @Dao
 interface WaterDao {
@@ -158,6 +171,9 @@ interface WeightDao {
 
     @Insert
     suspend fun insert(entry: WeightEntity)
+
+    @Query("DELETE FROM weights WHERE id = :id")
+    suspend fun delete(id: Long)
 
     @Query("SELECT * FROM weights")
     suspend fun all(): List<WeightEntity>

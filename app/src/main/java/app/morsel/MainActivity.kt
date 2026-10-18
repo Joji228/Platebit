@@ -8,7 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.unit.IntOffset
@@ -80,6 +80,7 @@ import app.morsel.ui.result.ResultScreen
 import app.morsel.ui.result.ResultViewModel
 import app.morsel.ui.scan.ScanScreen
 import app.morsel.ui.scan.ScanViewModel
+import app.morsel.ui.settings.AiSettingsScreen
 import app.morsel.ui.settings.SettingsScreen
 import app.morsel.ui.settings.SettingsViewModel
 import app.morsel.ui.theme.MorselTheme
@@ -90,6 +91,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ScanRoute
 @Serializable data class ResultRoute(val mealId: Long = -1L)
 @Serializable object SettingsRoute
+@Serializable object AiSettingsRoute
 @Serializable data class OnboardingRoute(val edit: Boolean = false)
 
 class MainActivity : ComponentActivity() {
@@ -149,8 +151,8 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
         bottomBar = {
             AnimatedVisibility(
                 visible = onToday || onScan,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
+                enter = slideInVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeIn(tween(MOTION_MS)),
+                exit = slideOutVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeOut(tween(MOTION_MS)),
             ) {
                 BottomBar(
                     scanSelected = onScan,
@@ -166,15 +168,17 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
         NavHost(
             navController = nav,
             startDestination = start,
-            // iOS-style push/pop: the new page slides over, the old one drifts left and dims.
-            // Tabs slide side by side like pages. Everything moves horizontally, nothing scales.
-            enterTransition = { if (isTabSwitch()) tabEnter() else pushEnter(PushSpec) },
-            exitTransition = { if (isTabSwitch()) tabExit() else pushExit(PushSpec) },
-            popEnterTransition = { if (isTabSwitch()) tabEnter() else popEnter(PushSpec) },
-            popExitTransition = { if (isTabSwitch()) tabExit() else popExit(PushSpec) },
-            // The back swipe gesture uses these instead of the pop ones. Left unset, Navigation
-            // shrinks the page and fades it, which looked cut off mid-way. Linear timing makes
-            // the page track the finger exactly; letting go finishes the same slide.
+            // iOS-style push/pop: the new page slides over, the old one drifts aside and dims.
+            // Tabs slide side by side like pages. Everything moves horizontally, nothing scales,
+            // and every transition shares one duration and curve so they all feel alike.
+            enterTransition = { if (isTabSwitch()) tabEnter() else pushEnter() },
+            exitTransition = { if (isTabSwitch()) tabExit() else pushExit() },
+            popEnterTransition = { if (isTabSwitch()) tabEnter() else popEnter() },
+            popExitTransition = { if (isTabSwitch()) tabExit() else popExit() },
+            // The back swipe gesture uses these instead of the pop ones. It plays the exact same
+            // animation as the matching button press, so Scan → Today swipes like a tab and
+            // every other screen slides away left to right. Linear timing keeps the page locked
+            // to the finger; letting go finishes the slide.
             predictivePopEnterTransition = { _ -> if (isTabSwitch()) tabEnter(GestureSpec) else popEnter(GestureSpec) },
             predictivePopExitTransition = { _ -> if (isTabSwitch()) tabExit(GestureSpec) else popExit(GestureSpec) },
         ) {
@@ -218,8 +222,15 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                         viewModel = vm,
                         onBack = { nav.popBackStack() },
                         onEditProfile = { nav.navigate(OnboardingRoute(edit = true)) },
+                        onAiEngine = { nav.navigate(AiSettingsRoute) },
                         onReset = { nav.navigate(OnboardingRoute()) { popUpTo(0) { inclusive = true } } },
                     )
+                }
+            }
+            composable<AiSettingsRoute> {
+                Screen {
+                    val vm = viewModel { SettingsViewModel(container) }
+                    AiSettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
                 }
             }
             composable<OnboardingRoute> { backStack ->
@@ -243,30 +254,35 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
     }
 }
 
-private const val PUSH_MS = 380
-private val PushEasing = CubicBezierEasing(0.2f, 0.9f, 0.25f, 1f)
-private val PushSpec = tween<IntOffset>(PUSH_MS, easing = PushEasing)
-private val GestureSpec = tween<IntOffset>(PUSH_MS, easing = LinearEasing)
+/** One duration and curve for every screen change: quick, with a soft landing. */
+private const val MOTION_MS = 280
+private val MotionEasing = FastOutSlowInEasing
+private val MotionSpec = tween<IntOffset>(MOTION_MS, easing = MotionEasing)
+private val GestureSpec = tween<IntOffset>(MOTION_MS, easing = LinearEasing)
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushEnter(spec: FiniteAnimationSpec<IntOffset>) =
-    slideIntoContainer(SlideDirection.Start, spec)
+/** Opening a screen: it slides in from the right while the old one drifts left and dims. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushEnter() = slideIntoContainer(SlideDirection.Start, MotionSpec)
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushExit(spec: FiniteAnimationSpec<IntOffset>) =
-    slideOutOfContainer(SlideDirection.Start, spec) { it / 4 } + fadeOut(tween(PUSH_MS, easing = LinearEasing), targetAlpha = 0.6f)
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushExit() =
+    slideOutOfContainer(SlideDirection.Start, MotionSpec) { it / 4 } + fadeOut(tween(MOTION_MS), targetAlpha = 0.6f)
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(spec: FiniteAnimationSpec<IntOffset>) =
-    slideIntoContainer(SlideDirection.End, spec) { it / 4 } + fadeIn(tween(PUSH_MS, easing = LinearEasing), initialAlpha = 0.6f)
+/** Going back, always left to right: the top screen slides off to the right and the one below returns. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(spec: FiniteAnimationSpec<IntOffset> = MotionSpec) =
+    slideIntoContainer(SlideDirection.End, spec) { it / 4 } + fadeIn(tween(MOTION_MS, easing = LinearEasing), initialAlpha = 0.6f)
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(spec: FiniteAnimationSpec<IntOffset>) =
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(spec: FiniteAnimationSpec<IntOffset> = MotionSpec) =
     slideOutOfContainer(SlideDirection.End, spec)
 
-/** Scan sits to the right of Today, so going to Scan slides left and coming back slides right. */
+/**
+ * Today and Scan are tabs, so they slide side by side like pages: both move together with no
+ * dimming or shadow. Scan sits to the right of Today.
+ */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.towardScan() = targetState.destination.hasRoute<ScanRoute>()
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnter(spec: FiniteAnimationSpec<IntOffset> = PushSpec) =
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnter(spec: FiniteAnimationSpec<IntOffset> = MotionSpec) =
     slideIntoContainer(if (towardScan()) SlideDirection.Start else SlideDirection.End, spec)
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExit(spec: FiniteAnimationSpec<IntOffset> = PushSpec) =
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExit(spec: FiniteAnimationSpec<IntOffset> = MotionSpec) =
     slideOutOfContainer(if (towardScan()) SlideDirection.Start else SlideDirection.End, spec)
 
 private fun NavDestination?.isTab() = this?.hasRoute<TodayRoute>() == true || this?.hasRoute<ScanRoute>() == true

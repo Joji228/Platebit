@@ -76,15 +76,20 @@ import app.morsel.ui.components.RoundIconButton
 import app.morsel.ui.components.format
 import app.morsel.ui.theme.Nutrient
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onEditProfile: () -> Unit, onReset: () -> Unit) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+    onEditProfile: () -> Unit,
+    onAiEngine: () -> Unit,
+    onReset: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var keyDialog by remember { mutableStateOf<Provider?>(null) }
-    var modelDialog by remember { mutableStateOf<Provider?>(null) }
     var targetDialog by remember { mutableStateOf(false) }
     var waterDialog by remember { mutableStateOf(false) }
     var resetDialog by remember { mutableStateOf(false) }
@@ -136,11 +141,30 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onEditProfi
                         {
                             ListRow(
                                 "Daily calories",
-                                subtitle = if (p?.customKcal != null) "Custom target" else "Calculated from your profile",
+                                subtitle = when {
+                                    p?.customKcal != null -> "Custom target"
+                                    state.estimate?.active == true -> "Smart: tuned to your real results"
+                                    else -> "Calculated from your profile"
+                                },
                                 value = state.targets?.let { "${it.kcal.format()} kcal" },
                                 icon = Icons.Rounded.LocalFireDepartment,
                                 iconTint = Nutrient.Protein,
                                 onClick = { targetDialog = true },
+                            )
+                        },
+                        {
+                            val estimate = state.estimate
+                            SwitchRow(
+                                title = "Smart target",
+                                subtitle = when {
+                                    p?.smartTarget == false -> "Off. Using the formula only"
+                                    estimate == null -> "Learns your real burn from meals and weigh-ins"
+                                    estimate.active -> "Your measured burn: ${estimate.measuredTdee!!.format()} kcal a day, " +
+                                        "${(estimate.confidence * 100).roundToInt()}% trusted (${estimate.daysLogged} days logged)"
+                                    else -> "Learning: ${estimate.waitingFor} (${estimate.daysLogged} of ${estimate.daysNeeded} days logged)"
+                                },
+                                checked = p?.smartTarget != false,
+                                onChange = { on -> viewModel.updateProfile { it.copy(smartTarget = on) } },
                             )
                         },
                         {
@@ -159,31 +183,22 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onEditProfi
 
             item { GroupLabel("AI") }
             item {
+                val ai = state.ai
                 GroupedList(
                     rows = listOf(
                         {
-                            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                                Text("Use first", style = MaterialTheme.typography.bodyLarge)
-                                Spacer(Modifier.height(10.dp))
-                                PillSelector(Provider.entries, state.ai.primary, { it.title }, viewModel::setPrimary)
-                            }
-                        },
-                        {
-                            SwitchRow(
-                                title = "Fall back to ${Provider.entries.first { it != state.ai.primary }.title}",
-                                subtitle = if (state.ai.fallback) {
-                                    "Used only if ${state.ai.primary.title} fails"
+                            ListRow(
+                                "AI engine",
+                                subtitle = if (ai.isReady(ai.primary)) {
+                                    val model = ai.modelFor(ai.primary).ifBlank { if (ai.primary == Provider.CUSTOM) "no model chosen" else "automatic model" }
+                                    "${ai.primary.title} · $model" + (ai.fallbackTarget?.let { " · backup: ${it.title}" } ?: "")
                                 } else {
-                                    "Off: only ${state.ai.primary.title} is ever used"
+                                    "Add an API key to start scanning meals"
                                 },
-                                checked = state.ai.fallback,
-                                onChange = viewModel::setFallback,
+                                icon = Icons.Rounded.AutoAwesome,
+                                onClick = onAiEngine,
                             )
                         },
-                        { KeyRow(Provider.DEEPSEEK, state.ai.deepseekKey, onClick = { keyDialog = Provider.DEEPSEEK }) },
-                        { ModelRow(Provider.DEEPSEEK, state.ai.deepseekModel, onClick = { modelDialog = Provider.DEEPSEEK }) },
-                        { KeyRow(Provider.GEMINI, state.ai.geminiKey, onClick = { keyDialog = Provider.GEMINI }) },
-                        { ModelRow(Provider.GEMINI, state.ai.geminiModel, onClick = { modelDialog = Provider.GEMINI }) },
                     ),
                 )
             }
@@ -285,28 +300,6 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onEditProfi
         }
     }
 
-    keyDialog?.let { provider ->
-        KeyDialog(
-            provider = provider,
-            initial = state.ai.keyFor(provider),
-            viewModel = viewModel,
-            onDismiss = {
-                keyDialog = null
-                viewModel.resetKeyCheck()
-            },
-        )
-    }
-    modelDialog?.let { provider ->
-        ModelDialog(
-            provider = provider,
-            selected = state.ai.modelFor(provider),
-            viewModel = viewModel,
-            onDismiss = {
-                modelDialog = null
-                viewModel.resetKeyCheck()
-            },
-        )
-    }
     if (targetDialog) {
         val profile = state.profile
         var kcal by remember { mutableDoubleStateOf((state.targets?.kcal ?: 2000).toDouble()) }
@@ -378,7 +371,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onEditProfi
 }
 
 @Composable
-private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -441,142 +434,11 @@ private fun ResetDialog(onDismiss: () -> Unit, onConfirm: (keepKeys: Boolean) ->
 }
 
 @Composable
-private fun GroupLabel(text: String) {
+internal fun GroupLabel(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 2.dp),
     )
-}
-
-@Composable
-private fun KeyRow(provider: Provider, key: String, onClick: () -> Unit) {
-    ListRow(
-        "${provider.title} API key",
-        subtitle = if (key.isBlank()) "Not set" else "Saved · ••••${key.takeLast(4)}",
-        icon = Icons.Rounded.Key,
-        iconTint = if (key.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-        onClick = onClick,
-    )
-}
-
-@Composable
-private fun ModelRow(provider: Provider, model: String, onClick: () -> Unit) {
-    ListRow(
-        "${provider.title} model",
-        subtitle = model.ifBlank { "Automatic" },
-        icon = if (provider == Provider.DEEPSEEK) Icons.Rounded.Memory else Icons.Rounded.AutoAwesome,
-        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-        onClick = onClick,
-    )
-}
-
-@Composable
-private fun KeyDialog(provider: Provider, initial: String, viewModel: SettingsViewModel, onDismiss: () -> Unit) {
-    var key by remember { mutableStateOf(initial) }
-    var visible by remember { mutableStateOf(false) }
-    val check by viewModel.keyCheck.collectAsStateWithLifecycle()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = { Text("${provider.title} API key") },
-        text = {
-            Column {
-                Text(
-                    if (provider == Provider.DEEPSEEK) "Create one at platform.deepseek.com" else "Create a free one at aistudio.google.com",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it },
-                    singleLine = true,
-                    placeholder = { Text("Paste your key") },
-                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        IconButton(onClick = { visible = !visible }) {
-                            Icon(if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (visible) "Hide key" else "Show key")
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                CheckStatus(check)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { viewModel.saveKey(provider, key) }) { Text(if (key.isBlank()) "Remove" else "Save and test") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
-}
-
-@Composable
-private fun CheckStatus(check: KeyCheck) {
-    when (check) {
-        KeyCheck.Idle -> Unit
-        KeyCheck.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(8.dp))
-            Text("Checking…", style = MaterialTheme.typography.bodyMedium)
-        }
-        is KeyCheck.Ok -> Text(
-            "Key works · ${check.models.size} models available",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        is KeyCheck.Failed -> Text(check.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-    }
-}
-
-@Composable
-private fun ModelDialog(provider: Provider, selected: String, viewModel: SettingsViewModel, onDismiss: () -> Unit) {
-    val check by viewModel.keyCheck.collectAsStateWithLifecycle()
-    androidx.compose.runtime.LaunchedEffect(provider) { viewModel.loadModels(provider) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = { Text("${provider.title} model") },
-        text = {
-            Column {
-                Text(
-                    if (provider == Provider.DEEPSEEK) "Pick a model that accepts images. Automatic prefers deepseek-flash (V4.1 Flash)." else "Flash models are fast and on the free tier.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                val ok = check as? KeyCheck.Ok
-                val models = ok?.models.orEmpty()
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    item {
-                        val auto = ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic"
-                        ModelOption(auto, selected.isBlank()) { viewModel.setModel(provider, ""); onDismiss() }
-                    }
-                    items(models) { model ->
-                        ModelOption(model, model == selected) { viewModel.setModel(provider, model); onDismiss() }
-                    }
-                    if (check !is KeyCheck.Ok) item { Spacer(Modifier.height(8.dp)); CheckStatus(check) }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
-
-@Composable
-private fun ModelOption(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-    }
 }

@@ -126,7 +126,8 @@ fun ProgressLine(
 ) {
     val animated by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+        // Fills quickly and settles without wobbling.
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
         label = "progress",
     )
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -538,19 +539,25 @@ fun ListRow(
     }
 }
 
-/** Weight over time with a dashed goal line and a soft fill under the curve. */
+/**
+ * Weight over time: the smoothed [trend] as a line with a soft fill, raw [readings] as faint dots,
+ * and a dashed goal line. X values are epoch days.
+ */
 @Composable
 fun WeightChart(
-    points: List<Pair<Long, Double>>,
+    trend: List<Pair<Long, Double>>,
+    readings: List<Pair<Long, Double>>,
     goal: Double,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
 ) {
+    val points = trend
     val grid = MaterialTheme.colorScheme.outlineVariant
     val goalColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     Canvas(modifier) {
         if (points.isEmpty()) return@Canvas
-        val values = points.map { it.second } + goal
+        val values = points.map { it.second } + readings.map { it.second } + goal
         val min = values.min() - 1.0
         val max = values.max() + 1.0
         val t0 = points.first().first
@@ -580,6 +587,7 @@ fun WeightChart(
                 close()
             }
             drawPath(fill, Brush.verticalGradient(listOf(color.copy(alpha = 0.28f), color.copy(alpha = 0f))))
+            readings.forEach { (t, v) -> drawCircle(dotColor, radius = 2.5.dp.toPx(), center = Offset(x(t), y(v))) }
             drawPath(line, color, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
         val last = points.last()

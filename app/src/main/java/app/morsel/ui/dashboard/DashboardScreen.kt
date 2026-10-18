@@ -1,7 +1,25 @@
 package app.morsel.ui.dashboard
 
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +44,12 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.foundation.layout.heightIn
+import app.morsel.data.db.WeightEntity
+import java.time.Instant
+import java.time.ZoneId
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Settings
@@ -76,6 +100,68 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
+/**
+ * Sideways day switching. The page follows the finger; on release it either slides away and the
+ * neighbouring day slides in from the other side, or springs back. Swiping right goes to the
+ * earlier day, left to the later one, which stops at today with a rubber-band tug.
+ */
+@Stable
+private class DaySwipe(
+    private val scope: CoroutineScope,
+    private val listState: LazyListState,
+    private val earlier: () -> Unit,
+    private val later: () -> Unit,
+) {
+    var offset by mutableFloatStateOf(0f)
+    var width by mutableFloatStateOf(1f)
+    var canGoNext = false
+    private var busy = false
+
+    fun drag(delta: Float) {
+        if (busy) return
+        val next = offset + delta
+        // Past today there is nothing to show, so pulling further feels heavy.
+        offset = if (next < 0f && !canGoNext) offset + delta * 0.3f else next
+    }
+
+    fun release(velocity: Float) {
+        if (busy) return
+        val far = width * 0.25f
+        when {
+            offset > far || velocity > FLING -> go(-1)
+            (offset < -far || velocity < -FLING) && canGoNext -> go(1)
+            else -> settle()
+        }
+    }
+
+    /** [direction] is -1 for the earlier day and 1 for the later one. */
+    fun go(direction: Int) {
+        if (busy) return
+        if (direction > 0 && !canGoNext) return settle()
+        busy = true
+        scope.launch {
+            val exit = if (direction < 0) width else -width
+            animate(offset, exit, animationSpec = tween(150, easing = FastOutLinearInEasing)) { v, _ -> offset = v }
+            if (direction < 0) earlier() else later()
+            listState.scrollToItem(0)
+            animate(-exit, 0f, animationSpec = tween(230, easing = FastOutSlowInEasing)) { v, _ -> offset = v }
+            busy = false
+        }
+    }
+
+    private fun settle() {
+        busy = true
+        scope.launch {
+            animate(offset, 0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) { v, _ -> offset = v }
+            busy = false
+        }
+    }
+
+    private companion object {
+        const val FLING = 1500f
+    }
+}
+
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -85,23 +171,47 @@ fun DashboardScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showWeightDialog by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize()) {
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay) }
+    swipe.canGoNext = state.date < LocalDate.now()
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { swipe.width = it.width.toFloat().coerceAtLeast(1f) }
+            // Swipe sideways anywhere on the page to move between days. Vertical scrolling is
+            // untouched, and the system back gesture still owns the very edges of the screen.
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { swipe.drag(it) },
+                onDragStopped = { swipe.release(it) },
+            ),
+    ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars),
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .graphicsLayer {
+                    translationX = swipe.offset
+                    alpha = 1f - 0.5f * (abs(swipe.offset) / swipe.width).coerceAtMost(1f)
+                },
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 Header(
                     date = state.date,
-                    onPrev = viewModel::previousDay,
-                    onNext = viewModel::nextDay,
+                    onPrev = { swipe.go(-1) },
+                    onNext = { swipe.go(1) },
                     onSettings = onSettings,
                 )
             }
+            // Until the first real numbers arrive, show nothing rather than placeholder targets.
+            if (state.loading) return@LazyColumn
             item { CaloriesCard(state) }
             item {
                 WaterCard(
@@ -111,7 +221,7 @@ fun DashboardScreen(
                     onUndo = viewModel::undoWater,
                 )
             }
-            item { WeightCard(state, onLog = { showWeightDialog = true }) }
+            item { WeightCard(state, onLog = { showWeightDialog = true }, onHistory = { showHistory = true }) }
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Meals", trailing = "${state.eaten.kcal.format()} kcal")
@@ -157,6 +267,13 @@ fun DashboardScreen(
         }
     }
 
+    if (showHistory) {
+        WeightHistoryDialog(
+            weighIns = state.plan.weighIns,
+            onDelete = viewModel::deleteWeight,
+            onDismiss = { showHistory = false },
+        )
+    }
     if (showWeightDialog) {
         WeightDialog(
             initial = state.currentWeight ?: 80.0,
@@ -217,7 +334,13 @@ private fun CaloriesCard(state: DashboardState) {
     MorselCard {
         Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Text("Calories", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Calories", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.plan.estimate?.active == true && state.profile?.customKcal == null) {
+                        Spacer(Modifier.width(8.dp))
+                        Pill("Smart", MaterialTheme.colorScheme.primary)
+                    }
+                }
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(eaten.format(), style = MaterialTheme.typography.displaySmall.merge(Numeric))
                     Text(
@@ -305,15 +428,14 @@ private fun WaterCard(ml: Int, goalMl: Int, onAdd: () -> Unit, onUndo: () -> Uni
 }
 
 @Composable
-private fun WeightCard(state: DashboardState, onLog: () -> Unit) {
+private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -> Unit) {
     val profile = state.profile ?: return
     val current = state.currentWeight ?: profile.startWeightKg
     val change = current - profile.startWeightKg
     val towardsGoal = (profile.goalWeightKg - profile.startWeightKg) * change >= 0
-    val points = buildList {
-        if (state.weights.isEmpty()) add(System.currentTimeMillis() to profile.startWeightKg)
-        state.weights.forEach { add(it.timestamp to it.kg) }
-    }
+    val trend = state.plan.trend
+    val trendLine = trend.map { it.date.toEpochDay() to it.trend }.ifEmpty { listOf(LocalDate.now().toEpochDay() to profile.startWeightKg) }
+    val readings = trend.map { it.date.toEpochDay() to it.raw }
     MorselCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Weight", style = MaterialTheme.typography.titleMedium)
@@ -325,19 +447,24 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit) {
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (state.plan.weighIns.isNotEmpty()) {
+                RoundIconButton(Icons.Rounded.History, "Weigh-in history", onHistory, size = 40.dp)
+                Spacer(Modifier.width(8.dp))
+            }
             // Kept in the header so the floating camera button never covers it.
             SecondaryButton("Log", onLog, icon = Icons.Rounded.Add)
         }
         Spacer(Modifier.height(14.dp))
         Box(contentAlignment = Alignment.Center) {
             WeightChart(
-                points = points,
+                trend = trendLine,
+                readings = readings,
                 goal = profile.goalWeightKg,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(96.dp),
             )
-            if (points.size < 2) {
+            if (trend.size < 2) {
                 Text(
                     "Log your weight every few days to see your trend",
                     style = MaterialTheme.typography.bodySmall,
@@ -348,13 +475,64 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit) {
                 )
             }
         }
+        if (trend.size >= 2) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Line is your smoothed trend · dots are weigh-ins",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             WeightStat("Start", profile.startWeightKg, Modifier.weight(1f))
-            WeightStat("Now", current, Modifier.weight(1f), highlight = true)
+            WeightStat("Trend", current, Modifier.weight(1f), highlight = true)
             WeightStat("Goal", profile.goalWeightKg, Modifier.weight(1f))
         }
     }
+}
+
+@Composable
+private fun WeightHistoryDialog(weighIns: List<WeightEntity>, onDelete: (Long) -> Unit, onDismiss: () -> Unit) {
+    val formatter = remember { DateTimeFormatter.ofPattern("EEE, MMM d · HH:mm", Locale.getDefault()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        title = { Text("Weigh-ins") },
+        text = {
+            Column {
+                Text(
+                    "Delete any reading that's wrong. Your trend and calorie target update right away.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(weighIns.asReversed(), key = { it.id }) { entry ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${entry.kg.format(1)} kg", style = MaterialTheme.typography.titleSmall.merge(Numeric))
+                                Text(
+                                    Instant.ofEpochMilli(entry.timestamp).atZone(ZoneId.systemDefault()).format(formatter),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { onDelete(entry.id) }) {
+                                Icon(Icons.Rounded.DeleteOutline, "Delete reading", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 @Composable

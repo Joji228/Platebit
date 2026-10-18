@@ -32,6 +32,10 @@ class MorselRepository(private val db: MorselDatabase) {
 
     fun weights() = db.weights().observeAll()
 
+    fun dailyKcal(from: LocalDate, to: LocalDate) = db.meals().observeDailyKcal(from.toString(), to.toString())
+
+    suspend fun deleteWeight(id: Long) = db.weights().delete(id)
+
     suspend fun meal(id: Long) = db.meals().get(id)
 
     suspend fun saveMeal(meal: MealEntity, items: List<FoodItemEntity>): Long = db.withTransaction {

@@ -1,4 +1,4 @@
-package app.morsel.ui.settings
+﻿package app.morsel.ui.settings
 
 import android.content.Context
 import android.net.Uri
@@ -9,7 +9,7 @@ import app.morsel.data.AiSettings
 import app.morsel.data.Backup
 import app.morsel.data.Provider
 import app.morsel.data.ThemeMode
-import app.morsel.domain.Nutrition
+import app.morsel.domain.AdaptiveEstimate
 import app.morsel.domain.Targets
 import app.morsel.domain.UserProfile
 import kotlinx.coroutines.CancellationException
@@ -27,6 +27,7 @@ import kotlinx.serialization.json.Json
 data class SettingsState(
     val profile: UserProfile? = null,
     val targets: Targets? = null,
+    val estimate: AdaptiveEstimate? = null,
     val ai: AiSettings = AiSettings(),
     val theme: ThemeMode = ThemeMode.DARK,
 )
@@ -43,18 +44,11 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
 
     val state: StateFlow<SettingsState> = combine(
-        app.settings.profile,
+        app.plans.plan,
         app.settings.ai,
         app.settings.theme,
-        app.repository.weights(),
-    ) { profile, ai, theme, weights ->
-        val current = weights.lastOrNull()?.kg ?: profile?.startWeightKg
-        SettingsState(
-            profile = profile,
-            targets = if (profile != null && current != null) Nutrition.targets(profile, current) else null,
-            ai = ai,
-            theme = theme,
-        )
+    ) { plan, ai, theme ->
+        SettingsState(profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
     /** Size and count of stored meal photos, e.g. "3.2 MB" and 41; computed once when Settings opens. */
@@ -81,6 +75,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
 
     fun setFallback(enabled: Boolean) = viewModelScope.launch { app.settings.setFallback(enabled) }
 
+    fun setFallbackProvider(provider: Provider) = viewModelScope.launch { app.settings.setFallbackProvider(provider) }
+
     /** Erases meals, water, weights, photos and the profile; optionally the API keys too. */
     fun resetAll(keepKeys: Boolean, onDone: () -> Unit) {
         viewModelScope.launch {
@@ -96,29 +92,37 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         app.settings.profile.first()?.let { app.settings.saveProfile(transform(it)) }
     }
 
-    /** Saves the key, then checks it by listing the models it can use. */
-    fun saveKey(provider: Provider, key: String) {
+    /**
+     * Saves the key (and, for a custom service, its address), then checks them by listing the
+     * models they can use.
+     */
+    fun saveKey(provider: Provider, key: String, baseUrl: String = "") {
         viewModelScope.launch {
+            if (provider.needsBaseUrl) app.settings.setCustomBaseUrl(baseUrl)
             app.settings.setKey(provider, key)
             if (key.isBlank()) {
                 keyCheck.value = KeyCheck.Idle
                 return@launch
             }
-            check(provider, key.trim())
+            check(provider, key.trim(), if (provider.needsBaseUrl) baseUrl.trim().trimEnd('/') else provider.baseUrl.orEmpty())
         }
     }
 
     fun loadModels(provider: Provider) {
         viewModelScope.launch {
-            val key = app.settings.ai.first().keyFor(provider)
-            if (key.isBlank()) keyCheck.value = KeyCheck.Failed("Add a key first") else check(provider, key)
+            val ai = app.settings.ai.first()
+            when {
+                ai.keyFor(provider).isBlank() -> keyCheck.value = KeyCheck.Failed("Add a key first")
+                !ai.isReady(provider) -> keyCheck.value = KeyCheck.Failed("Add the service address first")
+                else -> check(provider, ai.keyFor(provider), ai.baseUrlFor(provider))
+            }
         }
     }
 
-    private suspend fun check(provider: Provider, key: String) {
+    private suspend fun check(provider: Provider, key: String, baseUrl: String) {
         keyCheck.value = KeyCheck.Checking
         keyCheck.value = try {
-            val models = app.ai.listModels(provider, key)
+            val models = app.ai.listModels(provider, key, baseUrl)
             KeyCheck.Ok(models, app.ai.pickDefault(provider, models))
         } catch (e: CancellationException) {
             throw e

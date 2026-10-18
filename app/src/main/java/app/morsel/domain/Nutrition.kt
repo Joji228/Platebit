@@ -34,6 +34,8 @@ data class UserProfile(
     val customKcal: Int? = null,
     /** Null means the water goal is calculated from sex, weight, height and activity. */
     val customWaterMl: Int? = null,
+    /** Adjust the calorie target from logged meals and weight trend (see [AdaptiveTdee]). */
+    val smartTarget: Boolean = true,
 )
 
 enum class MealType(val title: String) {
@@ -122,10 +124,16 @@ object Nutrition {
         }
     }
 
+    /**
+     * Daily burn. [scale] is measured burn ÷ formula burn from [AdaptiveTdee]; applying it as a
+     * ratio keeps the correction valid as weight (and so BMR) changes.
+     */
+    fun tdee(profile: UserProfile, weightKg: Double, scale: Double = 1.0) = bmr(profile, weightKg) * profile.activity.factor * scale
+
     /** The daily calorie target the app shows at a given body weight. */
-    private fun kcalTarget(profile: UserProfile, weightKg: Double): Int {
+    private fun kcalTarget(profile: UserProfile, weightKg: Double, scale: Double): Int {
         profile.customKcal?.let { return (it / 10.0).roundToInt() * 10 }
-        val tdee = bmr(profile, weightKg) * profile.activity.factor
+        val tdee = tdee(profile, weightKg, scale)
         val direction = direction(profile, weightKg)
         // Cap loss at ~1% of body weight per week and gain at 0.5 kg per week.
         val maxRate = if (direction < 0) weightKg * 0.01 else 0.5
@@ -140,24 +148,24 @@ object Nutrition {
      * calorie target slowly stops working; a plain "difference ÷ deficit" ignores that and is
      * too optimistic, especially with a custom target or when the minimum-calorie floor applies.
      */
-    private fun weeksToGoal(profile: UserProfile, startKg: Double): Double? {
+    private fun weeksToGoal(profile: UserProfile, startKg: Double, scale: Double): Double? {
         val direction = direction(profile, startKg)
         if (direction == 0) return null
         var weight = startKg
         for (day in 0 until 5 * 365) {
             // Within 0.3 kg of the goal counts as there; the target switches to maintenance then.
             if (direction(profile, weight) != direction) return day / 7.0
-            val delta = kcalTarget(profile, weight) - bmr(profile, weight) * profile.activity.factor
+            val delta = kcalTarget(profile, weight, scale) - tdee(profile, weight, scale)
             if (delta == 0.0 || (delta < 0) != (direction < 0)) return null
             weight += delta / KCAL_PER_KG
         }
         return null
     }
 
-    fun targets(profile: UserProfile, currentWeightKg: Double): Targets {
+    fun targets(profile: UserProfile, currentWeightKg: Double, tdeeScale: Double = 1.0): Targets {
         val bmr = bmr(profile, currentWeightKg)
-        val tdee = bmr * profile.activity.factor
-        val kcal = kcalTarget(profile, currentWeightKg)
+        val tdee = tdee(profile, currentWeightKg, tdeeScale)
+        val kcal = kcalTarget(profile, currentWeightKg, tdeeScale)
 
         val proteinBase = if (direction(profile, currentWeightKg) < 0) profile.goalWeightKg else currentWeightKg
         val protein = 1.8 * proteinBase
@@ -172,7 +180,7 @@ object Nutrition {
             bmr = bmr.roundToInt(),
             tdee = tdee.roundToInt(),
             dailyDelta = (kcal - tdee).roundToInt(),
-            weeksToGoal = weeksToGoal(profile, currentWeightKg),
+            weeksToGoal = weeksToGoal(profile, currentWeightKg, tdeeScale),
             waterMl = waterMl(profile, currentWeightKg),
             bmi = bmi(currentWeightKg, profile.heightCm),
         )

@@ -20,31 +20,6 @@ import javax.crypto.spec.GCMParameterSpec
 
 private val Context.dataStore by preferencesDataStore("morsel_settings")
 
-enum class Provider(val title: String) { DEEPSEEK("DeepSeek"), GEMINI("Gemini") }
-
-enum class ThemeMode(val title: String) { DARK("Dark"), LIGHT("Light"), SYSTEM("System") }
-
-data class AiSettings(
-    val primary: Provider = Provider.DEEPSEEK,
-    val deepseekKey: String = "",
-    val geminiKey: String = "",
-    /** Blank means "pick automatically from the provider's model list". */
-    val deepseekModel: String = "",
-    val geminiModel: String = "",
-    /** When false, only [primary] is ever used. */
-    val fallback: Boolean = true,
-) {
-    fun keyFor(provider: Provider) = when (provider) {
-        Provider.DEEPSEEK -> deepseekKey
-        Provider.GEMINI -> geminiKey
-    }
-
-    fun modelFor(provider: Provider) = when (provider) {
-        Provider.DEEPSEEK -> deepseekModel
-        Provider.GEMINI -> geminiModel
-    }
-}
-
 class SettingsRepository(context: Context) {
     private val store = context.applicationContext.dataStore
     private val cipher = KeyCipher()
@@ -53,12 +28,15 @@ class SettingsRepository(context: Context) {
     private val profileKey = stringPreferencesKey("profile")
     private val themeKey = stringPreferencesKey("theme")
     private val primaryKey = stringPreferencesKey("ai_primary")
-    private val deepseekKey = stringPreferencesKey("deepseek_key")
-    private val geminiKey = stringPreferencesKey("gemini_key")
-    private val deepseekModel = stringPreferencesKey("deepseek_model")
-    private val geminiModel = stringPreferencesKey("gemini_model")
     private val fallbackKey = booleanPreferencesKey("ai_fallback")
+    private val fallbackProviderKey = stringPreferencesKey("ai_fallback_provider")
+    private val customUrlKey = stringPreferencesKey("custom_base_url")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
+    private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
+
+    private fun keyPref(provider: Provider) = stringPreferencesKey("${provider.prefix}_key")
+
+    private fun modelPref(provider: Provider) = stringPreferencesKey("${provider.prefix}_model")
 
     val profile: Flow<UserProfile?> = store.data.map { prefs ->
         prefs[profileKey]?.let { runCatching { json.decodeFromString<UserProfile>(it) }.getOrNull() }
@@ -71,24 +49,31 @@ class SettingsRepository(context: Context) {
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
             primary = Provider.entries.firstOrNull { it.name == prefs[primaryKey] } ?: Provider.DEEPSEEK,
-            deepseekKey = cipher.decrypt(prefs[deepseekKey]),
-            geminiKey = cipher.decrypt(prefs[geminiKey]),
-            deepseekModel = prefs[deepseekModel].orEmpty(),
-            geminiModel = prefs[geminiModel].orEmpty(),
-            fallback = prefs[fallbackKey] ?: true,
+            keys = Provider.entries.associateWith { cipher.decrypt(prefs[keyPref(it)]) },
+            models = Provider.entries.associateWith { prefs[modelPref(it)].orEmpty() },
+            customBaseUrl = prefs[customUrlKey].orEmpty(),
+            fallback = prefs[fallbackKey] ?: false,
+            fallbackProvider = Provider.entries.firstOrNull { it.name == prefs[fallbackProviderKey] },
         )
     }
 
     /**
-     * Version 1.0 saved its automatic model pick, which locked DeepSeek onto the legacy
-     * "deepseek-chat" alias. Clear those once so "Automatic" really is automatic.
+     * One-time cleanups of choices made by older versions:
+     * - Version 1.0 saved its automatic model pick, locking DeepSeek onto the legacy
+     *   "deepseek-chat" alias. Clear those so "Automatic" really is automatic.
+     * - Fallback used to be on by default. It is now off, so reset whatever was stored once.
      */
     suspend fun migrate() {
         store.edit { prefs ->
-            if (prefs[modelsMigratedKey] == true) return@edit
-            if (prefs[deepseekModel] in setOf("deepseek-chat", "deepseek-reasoner")) prefs.remove(deepseekModel)
-            prefs.remove(geminiModel)
-            prefs[modelsMigratedKey] = true
+            if (prefs[modelsMigratedKey] != true) {
+                if (prefs[modelPref(Provider.DEEPSEEK)] in setOf("deepseek-chat", "deepseek-reasoner")) prefs.remove(modelPref(Provider.DEEPSEEK))
+                prefs.remove(modelPref(Provider.GEMINI))
+                prefs[modelsMigratedKey] = true
+            }
+            if (prefs[fallbackOffKey] != true) {
+                prefs.remove(fallbackKey)
+                prefs[fallbackOffKey] = true
+            }
         }
     }
 
@@ -96,16 +81,25 @@ class SettingsRepository(context: Context) {
         store.edit { it[fallbackKey] = enabled }
     }
 
-    /** Wipes every setting. API keys survive when [keepKeys] is true. */
+    suspend fun setFallbackProvider(provider: Provider) {
+        store.edit { it[fallbackProviderKey] = provider.name }
+    }
+
+    suspend fun setCustomBaseUrl(url: String) {
+        store.edit { it[customUrlKey] = url.trim() }
+    }
+
+    /** Wipes every setting. API keys (and the custom address that goes with them) survive when [keepKeys] is true. */
     suspend fun clear(keepKeys: Boolean) {
         store.edit { prefs ->
-            val ds = prefs[deepseekKey]
-            val gm = prefs[geminiKey]
+            val keys = Provider.entries.mapNotNull { p -> prefs[keyPref(p)]?.let { p to it } }
+            val customUrl = prefs[customUrlKey]
             prefs.clear()
             prefs[modelsMigratedKey] = true
+            prefs[fallbackOffKey] = true
             if (keepKeys) {
-                ds?.let { prefs[deepseekKey] = it }
-                gm?.let { prefs[geminiKey] = it }
+                keys.forEach { (p, key) -> prefs[keyPref(p)] = key }
+                customUrl?.let { prefs[customUrlKey] = it }
             }
         }
     }
@@ -124,21 +118,11 @@ class SettingsRepository(context: Context) {
 
     suspend fun setKey(provider: Provider, key: String) {
         val encrypted = cipher.encrypt(key.trim())
-        store.edit {
-            when (provider) {
-                Provider.DEEPSEEK -> it[deepseekKey] = encrypted
-                Provider.GEMINI -> it[geminiKey] = encrypted
-            }
-        }
+        store.edit { it[keyPref(provider)] = encrypted }
     }
 
     suspend fun setModel(provider: Provider, model: String) {
-        store.edit {
-            when (provider) {
-                Provider.DEEPSEEK -> it[deepseekModel] = model
-                Provider.GEMINI -> it[geminiModel] = model
-            }
-        }
+        store.edit { it[modelPref(provider)] = model.trim() }
     }
 }
 

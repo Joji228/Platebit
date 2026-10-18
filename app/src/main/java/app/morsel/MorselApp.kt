@@ -7,6 +7,7 @@ import app.morsel.ai.AiService
 import app.morsel.ai.AnalysisResult
 import app.morsel.data.MorselRepository
 import app.morsel.data.PhotoStore
+import app.morsel.data.PlanRepository
 import app.morsel.data.SettingsRepository
 import app.morsel.data.db.MorselDatabase
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,7 @@ class AppContainer(context: Context) {
     private val database = Room.databaseBuilder(context, MorselDatabase::class.java, "morsel.db").build()
     val settings = SettingsRepository(context)
     val repository = MorselRepository(database)
+    val plans = PlanRepository(settings, repository)
     val photos = PhotoStore(context)
     val ai = AiService(settings)
     var draft: MealDraft? = null

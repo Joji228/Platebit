@@ -330,11 +330,8 @@ private fun TotalsCard(state: ResultState) {
 
 @Composable
 private fun MacroChip(label: String, grams: Double, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .padding(vertical = 2.dp),
-    ) {
+    // No clip here: a rounded clip with no inner padding shaved the first letter of the label.
+    Column(modifier.padding(vertical = 2.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = color)
         Text("${grams.format()} g", style = MaterialTheme.typography.titleMedium.merge(Numeric))
     }

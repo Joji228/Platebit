@@ -21,8 +21,10 @@ data class OnboardingState(
     val step: Step = Step.WELCOME,
     val profile: UserProfile = UserProfile(),
     val currentWeight: Double = UserProfile().startWeightKg,
+    /** Measured-burn correction from the smart target, so the plan preview matches the dashboard. */
+    val tdeeScale: Double = 1.0,
 ) {
-    val targets: Targets get() = Nutrition.targets(profile, currentWeight)
+    val targets: Targets get() = Nutrition.targets(profile, currentWeight, if (profile.smartTarget) tdeeScale else 1.0)
     val maintaining: Boolean get() = abs(profile.goalWeightKg - currentWeight) < 0.3
     val steps: List<Step>
         get() = Step.entries.filter { (it != Step.WELCOME || !edit) && (it != Step.PACE || !maintaining) }
@@ -36,6 +38,7 @@ class OnboardingViewModel(private val app: AppContainer, edit: Boolean) : ViewMo
     init {
         viewModelScope.launch {
             val existing = app.settings.profile.first()
+            val plan = app.plans.plan.first()
             val latest = app.repository.weights().first().lastOrNull()?.kg
             savedWeight = latest ?: existing?.startWeightKg
             _state.update {
@@ -43,6 +46,7 @@ class OnboardingViewModel(private val app: AppContainer, edit: Boolean) : ViewMo
                     loaded = true,
                     profile = existing ?: it.profile,
                     currentWeight = savedWeight ?: it.currentWeight,
+                    tdeeScale = plan.tdeeScale,
                 )
             }
         }

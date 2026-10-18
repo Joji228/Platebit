@@ -2,6 +2,7 @@ package app.morsel.ui.onboarding
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -95,8 +96,8 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onDone: () -> Unit, onExit:
             modifier = Modifier.weight(1f),
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
-                (slideInHorizontally(tween(280)) { if (forward) it / 4 else -it / 4 } + fadeIn(tween(280))) togetherWith
-                    (slideOutHorizontally(tween(200)) { if (forward) -it / 4 else it / 4 } + fadeOut(tween(200)))
+                (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { if (forward) it / 4 else -it / 4 } + fadeIn(tween(220))) togetherWith
+                    (slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { if (forward) -it / 4 else it / 4 } + fadeOut(tween(160)))
             },
             label = "step",
         ) { step ->
