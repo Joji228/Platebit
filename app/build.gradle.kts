@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -15,8 +17,29 @@ android {
         targetSdk = 36
         // versionCode only ever goes up (Android refuses to install a lower one over the app
         // already on the phone without wiping its data); versionName is what the user sees.
-        versionCode = 4
-        versionName = "0.1.0"
+        versionCode = 5
+        versionName = "0.1.1"
+    }
+
+    // Release signing comes from keystore.properties in the project root, which is git-ignored
+    // along with the keystore itself, so no signing secret ever lands in the repository:
+    //   storeFile=../platebit-release.jks
+    //   storePassword=...
+    //   keyAlias=platebit
+    //   keyPassword=...
+    // Without that file, release builds fall back to the local debug key.
+    val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file ->
+        Properties().apply { file.inputStream().use { load(it) } }
+    }
+    signingConfigs {
+        if (keystoreProps != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -24,8 +47,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Personal sideloaded build: sign with the debug key until a release keystore is set up.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -37,6 +59,15 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Lets unit tests read the exported database schemas.
+    sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")
+}
+
+// Each database version's schema is saved under app/schemas and committed, so every future
+// version change can be checked against the exact shape it upgrades from.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

@@ -8,6 +8,8 @@ import app.morsel.AppContainer
 import app.morsel.data.AiSettings
 import app.morsel.data.Backup
 import app.morsel.data.Provider
+import app.morsel.data.StorageInfo
+import app.morsel.data.formatBytes
 import app.morsel.data.ThemeMode
 import app.morsel.domain.AdaptiveEstimate
 import app.morsel.domain.Targets
@@ -51,16 +53,30 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         SettingsState(profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
-    /** Size and count of stored meal photos, e.g. "3.2 MB" and 41; computed once when Settings opens. */
+    /** Size and count of stored meal photos, e.g. "3.2 MB" and 41. */
     val photoStorage = MutableStateFlow<Pair<String, Int>?>(null)
 
+    /** Everything the app takes on the phone. */
+    val storage = MutableStateFlow<StorageInfo.Usage?>(null)
+
     init {
+        refreshStorage()
+    }
+
+    private fun refreshStorage() {
         viewModelScope.launch(Dispatchers.IO) {
             val files = app.photos.mealPhotos()
-            val bytes = files.sumOf { it.length() }
-            val size = if (bytes < 1024 * 1024) "${bytes / 1024} KB"
-            else String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
-            photoStorage.value = size to files.size
+            photoStorage.value = formatBytes(files.sumOf { it.length() }) to files.size
+            storage.value = app.storage.usage()
+        }
+    }
+
+    /** Removes every meal photo but keeps all meals and their numbers. */
+    fun deleteAllPhotos() {
+        viewModelScope.launch(Dispatchers.IO) {
+            app.repository.deleteAllPhotos(app.photos.mealPhotos())
+            refreshStorage()
+            message.value = "Meal photos deleted. Your meals are still logged."
         }
     }
 

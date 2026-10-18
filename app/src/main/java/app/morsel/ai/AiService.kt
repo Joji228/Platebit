@@ -22,9 +22,16 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
@@ -120,6 +127,7 @@ class AiService(private val settings: SettingsRepository) {
 
     /** Lists models the key can use. Doubles as a key check. */
     suspend fun listModels(provider: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
+        if (provider.needsBaseUrl) UrlPolicy.problem(baseUrl)?.let { throw AiException(it) }
         when (provider.kind) {
             ApiKind.GEMINI -> {
                 val root = get(
@@ -211,6 +219,7 @@ class AiService(private val settings: SettingsRepository) {
         userText: String,
     ): String = withContext(Dispatchers.IO) {
         val key = ai.keyFor(provider)
+        if (provider.needsBaseUrl) UrlPolicy.problem(ai.baseUrlFor(provider))?.let { throw AiException(it) }
         val encoded = images.map { Base64.encodeToString(it, Base64.NO_WRAP) }
         when (provider.kind) {
             ApiKind.GEMINI -> gemini(key, model, encoded, userText)
@@ -229,7 +238,7 @@ class AiService(private val settings: SettingsRepository) {
     }
 
     /** Claude's Messages API: images are base64 blocks, and the answer is a list of text blocks. */
-    private fun anthropic(provider: Provider, key: String, model: String, images: List<String>, userText: String): String {
+    private suspend fun anthropic(provider: Provider, key: String, model: String, images: List<String>, userText: String): String {
         val body = buildJsonObject {
             put("model", model)
             put("max_tokens", 2048)
@@ -268,7 +277,7 @@ class AiService(private val settings: SettingsRepository) {
         return text.ifBlank { throw AiException("${provider.title} returned no answer") }
     }
 
-    private fun gemini(key: String, model: String, images: List<String>, userText: String): String {
+    private suspend fun gemini(key: String, model: String, images: List<String>, userText: String): String {
         val body = buildJsonObject {
             putJsonObject("system_instruction") {
                 putJsonArray("parts") { addJsonObject { put("text", Prompts.SYSTEM) } }
@@ -311,7 +320,7 @@ class AiService(private val settings: SettingsRepository) {
      * [strict] adds JSON mode and a low temperature; OpenAI's newer models reject a custom
      * temperature, so it is only sent to the others.
      */
-    private fun openAiCompatible(
+    private suspend fun openAiCompatible(
         provider: Provider,
         baseUrl: String,
         key: String,
@@ -364,48 +373,81 @@ class AiService(private val settings: SettingsRepository) {
             ?: throw AiException("${provider.title} returned no answer")
     }
 
-    private fun parse(raw: String): AiMeal {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start < 0 || end <= start) throw AiException("The answer wasn't readable")
-        val meal = json.decodeFromString<AiMeal>(raw.substring(start, end + 1))
-        return meal.copy(items = meal.items.filter { it.name.isNotBlank() && it.grams > 0 })
-    }
+    private fun parse(raw: String): AiMeal = AiResponses.parseMeal(raw)
 
     private class HttpException(val code: Int, message: String) : Exception(message)
 
-    private fun post(url: String, headers: Map<String, String>, body: JsonObject, provider: Provider): JsonObject {
+    private suspend fun post(url: String, headers: Map<String, String>, body: JsonObject, provider: Provider): JsonObject {
         val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }
             .post(body.toString().toRequestBody(jsonMedia))
             .build()
         return execute(request, provider)
     }
 
-    private fun get(url: String, headers: Map<String, String>, provider: Provider): JsonObject {
+    private suspend fun get(url: String, headers: Map<String, String>, provider: Provider): JsonObject {
         val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.get().build()
         return execute(request, provider)
     }
 
-    private fun execute(request: Request, provider: Provider): JsonObject =
-        http.newCall(request).execute().use { response ->
-            val text = response.body.string()
-            if (!response.isSuccessful) throw HttpException(response.code, describeError(provider, response.code, text))
-            json.parseToJsonElement(text).jsonObject
-        }
+    /**
+     * Runs the request so that cancelling the scan really aborts it: the connection is closed
+     * straight away instead of the request finishing (and being billed) in the background.
+     */
+    private suspend fun execute(request: Request, provider: Provider): JsonObject {
+        val call = http.newCall(request)
+        val text = suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    cont.resumeWithException(e)
+                }
 
-    private fun describeError(provider: Provider, code: Int, body: String): String {
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        val body = runCatching { it.body.string() }
+                        body.onFailure { error -> cont.resumeWithException(error) }
+                        body.onSuccess { b ->
+                            if (it.isSuccessful) cont.resume(b) else cont.resumeWithException(HttpException(it.code, describeError(provider, it.code, b)))
+                        }
+                    }
+                }
+            })
+        }
+        return json.parseToJsonElement(text).jsonObject
+    }
+
+    private fun describeError(provider: Provider, code: Int, body: String) = AiResponses.describeError(provider, code, body)
+}
+
+/** Turning raw API responses into meals and readable errors. Separate so it can be unit tested. */
+internal object AiResponses {
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
+
+    /** Finds the JSON object in a model's answer (models sometimes wrap it in prose or ``` fences). */
+    fun parseMeal(raw: String): AiMeal {
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start < 0 || end <= start) throw AiException("The answer wasn't readable")
+        val meal = runCatching { json.decodeFromString<AiMeal>(raw.substring(start, end + 1)) }
+            .getOrElse { throw AiException("The answer wasn't readable") }
+        return meal.copy(items = meal.items.filter { it.name.isNotBlank() && it.grams > 0 })
+    }
+
+    fun describeError(provider: Provider, code: Int, body: String): String {
         val detail = runCatching {
             json.parseToJsonElement(body).jsonObject["error"]?.let { error ->
                 (error as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull
                     ?: error.jsonPrimitive.contentOrNull
             }
         }.getOrNull()
-        val hint = when (code) {
-            401, 403 -> "The API key was rejected"
-            402 -> "The account has no balance"
-            404 -> "Model not found"
-            429 -> "Rate limit reached, try again in a minute"
-            in 500..599 -> "${provider.title} is having problems"
+        // Gemini answers a bad key with 400 rather than 401.
+        val badKey = code == 400 && listOf("API_KEY_INVALID", "API key not valid", "invalid api key").any { body.contains(it, ignoreCase = true) }
+        val hint = when {
+            code == 401 || code == 403 || badKey -> "The API key was rejected"
+            code == 402 -> "The account has no balance"
+            code == 404 -> "Model not found"
+            code == 429 -> "Rate limit reached, try again in a minute"
+            code in 500..599 -> "${provider.title} is having problems"
             else -> "Request failed"
         }
         return "$hint ($code)" + (detail?.let { ": ${it.take(160)}" } ?: "")

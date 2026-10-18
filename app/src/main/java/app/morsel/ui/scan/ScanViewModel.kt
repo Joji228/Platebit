@@ -55,7 +55,7 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
             try {
                 val images = photos.map { app.photos.prepareForAi(it) }
                 val result = app.ai.analyze(images, note.ifBlank { null })
-                app.draft = MealDraft(photos.toList(), note.ifBlank { null }, result)
+                app.draft = MealDraft(photos.toList(), note.ifBlank { null }, result, app.clock.today.value)
                 reset()
                 onReady()
             } catch (e: CancellationException) {
@@ -75,7 +75,7 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
 
     /** Skip the AI and fill the meal in by hand. */
     fun manual(onReady: () -> Unit) {
-        app.draft = MealDraft(photos.toList(), note.ifBlank { null }, null)
+        app.draft = MealDraft(photos.toList(), note.ifBlank { null }, null, app.clock.today.value)
         reset()
         onReady()
     }

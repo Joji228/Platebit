@@ -176,7 +176,7 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay) }
-    swipe.canGoNext = state.date < LocalDate.now()
+    swipe.canGoNext = state.date < state.today
 
     Box(
         Modifier
@@ -205,6 +205,7 @@ fun DashboardScreen(
             item {
                 Header(
                     date = state.date,
+                    today = state.today,
                     onPrev = { swipe.go(-1) },
                     onNext = { swipe.go(1) },
                     onSettings = onSettings,
@@ -227,7 +228,7 @@ fun DashboardScreen(
                 SectionTitle("Meals", trailing = "${state.eaten.kcal.format()} kcal")
             }
             if (state.meals.isEmpty() && !state.loading) {
-                item { EmptyMeals(isToday = state.date == LocalDate.now(), onScan = onScan) }
+                item { EmptyMeals(isToday = state.date == state.today, onScan = onScan) }
             }
             val groups = state.meals.groupBy { MealType.parse(it.meal.mealType) }
             MealType.entries.forEach { type ->
@@ -287,8 +288,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun Header(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit) {
-    val today = LocalDate.now()
+private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit) {
     val title = when (date) {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
@@ -434,8 +434,23 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
     val change = current - profile.startWeightKg
     val towardsGoal = (profile.goalWeightKg - profile.startWeightKg) * change >= 0
     val trend = state.plan.trend
-    val trendLine = trend.map { it.date.toEpochDay() to it.trend }.ifEmpty { listOf(LocalDate.now().toEpochDay() to profile.startWeightKg) }
-    val readings = trend.map { it.date.toEpochDay() to it.raw }
+    // The line starts at the starting weight, so the very first weigh-in already shows progress
+    // (100 → 99.5 draws a line, not a lone dot). When that weigh-in is on the start day itself,
+    // the start sits half a day earlier so the two points don't stack. Weigh-ins older than the
+    // start date tell the story on their own, so no start point is added then.
+    val startDate = runCatching { LocalDate.parse(profile.startDate) }.getOrNull()
+    val firstDay = trend.firstOrNull()?.date
+    val startX = when {
+        firstDay == null -> (startDate ?: LocalDate.now()).toEpochDay().toDouble()
+        startDate == null || startDate.isAfter(firstDay) -> null
+        startDate == firstDay -> firstDay.toEpochDay() - 0.5
+        else -> startDate.toEpochDay().toDouble()
+    }
+    val trendLine = buildList {
+        startX?.let { add(it to profile.startWeightKg) }
+        trend.forEach { add(it.date.toEpochDay().toDouble() to it.trend) }
+    }
+    val readings = trend.map { it.date.toEpochDay().toDouble() to it.raw }
     MorselCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Weight", style = MaterialTheme.typography.titleMedium)
@@ -464,9 +479,9 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
                     .fillMaxWidth()
                     .height(96.dp),
             )
-            if (trend.size < 2) {
+            if (trendLine.size < 2) {
                 Text(
-                    "Log your weight every few days to see your trend",
+                    "Log your weight to see your progress",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
@@ -475,7 +490,7 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
                 )
             }
         }
-        if (trend.size >= 2) {
+        if (trend.isNotEmpty() && trendLine.size >= 2) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "Line is your smoothed trend · dots are weigh-ins",

@@ -27,13 +27,16 @@ object WeightTrend {
         val daily = weighIns.groupBy { it.date }.map { (date, list) -> date to list.last().kg }.sortedBy { it.first }
         var trend: Double? = null
         var last: LocalDate? = null
-        return daily.map { (date, kg) ->
+        return daily.mapIndexed { index, (date, kg) ->
             val previous = trend
             trend = if (previous == null) {
                 kg
             } else {
                 val days = ChronoUnit.DAYS.between(last, date).coerceAtLeast(1)
-                val keep = DAILY_KEEP.pow(days.toDouble())
+                // Warm-up: with only a few readings, a long memory would mostly remember the
+                // first one, so the n-th reading gets at least 1/n of the weight. After ten
+                // readings this settles into the normal 10% per day.
+                val keep = minOf(DAILY_KEEP.pow(days.toDouble()), 1.0 - 1.0 / (index + 1))
                 previous * keep + kg * (1 - keep)
             }
             last = date

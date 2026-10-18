@@ -67,6 +67,22 @@ class MorselRepository(private val db: MorselDatabase) {
         if (old.isNotEmpty()) db.meals().clearPhotos(old.map { it.id })
         val referenced = db.meals().photoPaths().toSet()
         photos.filter { it.absolutePath !in referenced }.forEach { it.delete() }
+        clearMissingPhotos()
+    }
+
+    /**
+     * Meals pointing at photos that no longer exist (for example after importing a backup made
+     * on another phone; backups don't carry photos) drop the link instead of showing an empty box.
+     */
+    suspend fun clearMissingPhotos() {
+        val missing = db.meals().withPhotosBefore(Long.MAX_VALUE).filter { m -> m.photoPath?.let { !File(it).exists() } == true }
+        if (missing.isNotEmpty()) db.meals().clearPhotos(missing.map { it.id })
+    }
+
+    /** Deletes every saved meal photo; the meals stay logged with their numbers. */
+    suspend fun deleteAllPhotos(photos: List<File>) {
+        db.meals().clearAllPhotos()
+        photos.forEach { it.delete() }
     }
 
     suspend fun addWater(date: LocalDate, ml: Int) =
@@ -94,5 +110,6 @@ class MorselRepository(private val db: MorselDatabase) {
         db.meals().insertItems(backup.items)
         db.water().insertAll(backup.water)
         db.weights().insertAll(backup.weights)
+        clearMissingPhotos()
     }
 }

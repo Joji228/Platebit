@@ -10,8 +10,10 @@ import app.morsel.domain.TrendPoint
 import app.morsel.domain.UserProfile
 import app.morsel.domain.WeighIn
 import app.morsel.domain.WeightTrend
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.LocalDate
 
 /** Everything the targets depend on, computed in one place so every screen agrees. */
@@ -27,9 +29,15 @@ data class PlanState(
     val targets: Targets? = null,
 )
 
-class PlanRepository(private val settings: SettingsRepository, private val repository: MorselRepository) {
+@OptIn(ExperimentalCoroutinesApi::class)
+class PlanRepository(
+    private val settings: SettingsRepository,
+    private val repository: MorselRepository,
+    clock: DayClock,
+) {
 
-    val plan: Flow<PlanState> = LocalDate.now().let { today ->
+    // Rebuilt when the day changes, so the smart target's 4-week window moves with the calendar.
+    val plan: Flow<PlanState> = clock.today.flatMapLatest { today ->
         combine(
             settings.profile,
             repository.weights(),

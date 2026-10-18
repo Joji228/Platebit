@@ -1,10 +1,25 @@
+# Build output and IDE files
 .gradle/
 .kotlin/
 build/
-local.properties
+captures/
 .idea/
 *.iml
-captures/
+.DS_Store
+build-log.txt
+
+# Machine-specific paths (contains the local SDK path and user name)
+local.properties
+
+# Signing secrets: never commit these
 *.keystore
 *.jks
-build-log.txt
+keystore.properties
+
+# Anything that could hold keys or personal data
+*.env
+.env*
+secrets.properties
+*.apk
+*.aab
+platebit-backup-*.json

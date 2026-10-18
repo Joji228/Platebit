@@ -13,6 +13,7 @@ import androidx.room.Relation
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.migration.Migration
 import app.morsel.domain.Macros
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
@@ -129,6 +130,9 @@ interface MealDao {
     @Query("SELECT photoPath FROM meals WHERE photoPath IS NOT NULL")
     suspend fun photoPaths(): List<String>
 
+    @Query("UPDATE meals SET photoPath = NULL")
+    suspend fun clearAllPhotos()
+
     /** Total calories per logged day, for the adaptive target. */
     @Query(
         """
@@ -187,11 +191,25 @@ interface WeightDao {
 
 @Database(
     entities = [MealEntity::class, FoodItemEntity::class, WaterEntity::class, WeightEntity::class],
-    version = 1,
-    exportSchema = false,
+    version = MorselDatabase.VERSION,
+    exportSchema = true,
 )
 abstract class MorselDatabase : RoomDatabase() {
     abstract fun meals(): MealDao
     abstract fun water(): WaterDao
     abstract fun weights(): WeightDao
+
+    companion object {
+        /**
+         * How to change the database without losing anyone's meals:
+         * 1. Change the entities and raise VERSION by one.
+         * 2. Build once; the new schema appears in app/schemas. Commit it.
+         * 3. Add a Migration(old, new) to [MIGRATIONS] that alters the existing tables.
+         * There is deliberately no destructive fallback: a missing migration crashes in testing
+         * instead of silently wiping a real user's history.
+         */
+        const val VERSION = 1
+
+        val MIGRATIONS: Array<Migration> = arrayOf()
+    }
 }

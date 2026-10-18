@@ -151,8 +151,15 @@ private class KeyCipher {
         return Base64.encodeToString(cipher.iv + cipher.doFinal(plain.toByteArray()), Base64.NO_WRAP)
     }
 
+    /** Decrypted keys by ciphertext; settings re-emit often, and unlocking the Keystore each time is slow. */
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     fun decrypt(encoded: String?): String {
         if (encoded.isNullOrEmpty()) return ""
+        return cache.getOrPut(encoded) { decryptUncached(encoded) }
+    }
+
+    private fun decryptUncached(encoded: String): String {
         return runCatching {
             val bytes = Base64.decode(encoded, Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")

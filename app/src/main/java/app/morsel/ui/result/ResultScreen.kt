@@ -318,6 +318,12 @@ private fun TotalsCard(state: ResultState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 5.dp),
             )
+            Spacer(Modifier.weight(1f))
+            // The whole plate's weight, so a portion can be judged without scrolling the items.
+            Column(horizontalAlignment = Alignment.End) {
+                Text("≈ ${state.totalGrams.format()} g", style = MaterialTheme.typography.titleLarge.merge(Numeric))
+                Text("total weight", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

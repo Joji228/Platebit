@@ -8,7 +8,6 @@ import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -20,6 +19,8 @@ import java.time.LocalDate
 data class DashboardState(
     val loading: Boolean = true,
     val date: LocalDate = LocalDate.now(),
+    /** The real current day; changes at midnight. */
+    val today: LocalDate = LocalDate.now(),
     val plan: PlanState = PlanState(),
     val eaten: Macros = Macros(),
     val waterMl: Int = 0,
@@ -32,15 +33,21 @@ data class DashboardState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel(private val app: AppContainer) : ViewModel() {
-    private val date = MutableStateFlow(LocalDate.now())
+    private val date = app.viewedDay
 
     // The date travels inside each emission, so the day and its meals always change together;
     // otherwise a swipe could briefly show the new date over the old day's meals.
     val state: StateFlow<DashboardState> = date.flatMapLatest { day ->
-        combine(app.plans.plan, app.repository.mealsFor(day), app.repository.waterFor(day)) { plan, meals, water ->
+        combine(
+            app.plans.plan,
+            app.repository.mealsFor(day),
+            app.repository.waterFor(day),
+            app.clock.today,
+        ) { plan, meals, water, today ->
             DashboardState(
                 loading = false,
                 date = day,
+                today = today,
                 plan = plan,
                 eaten = meals.fold(Macros()) { acc, meal -> acc + meal.macros() },
                 waterMl = water,
@@ -54,7 +61,7 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
     }
 
     fun nextDay() {
-        if (date.value < LocalDate.now()) date.value = date.value.plusDays(1)
+        if (date.value < app.clock.today.value) date.value = date.value.plusDays(1)
     }
 
     fun addWater(ml: Int) {

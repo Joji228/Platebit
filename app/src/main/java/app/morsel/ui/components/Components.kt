@@ -150,8 +150,20 @@ fun ProgressLine(
 
 @Composable
 fun MacroStat(label: String, value: Double, goal: Int, color: Color, modifier: Modifier = Modifier) {
+    val over = if (goal > 0) value - goal else 0.0
     Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Same warning the calorie card gives when you go past the target.
+            if (over >= 1) {
+                Text(
+                    " +${over.format()}g",
+                    style = MaterialTheme.typography.labelMedium.merge(Numeric),
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                )
+            }
+        }
         Spacer(Modifier.height(6.dp))
         ProgressLine(if (goal > 0) (value / goal).toFloat() else 0f, color, height = 5.dp)
         Spacer(Modifier.height(6.dp))
@@ -541,12 +553,12 @@ fun ListRow(
 
 /**
  * Weight over time: the smoothed [trend] as a line with a soft fill, raw [readings] as faint dots,
- * and a dashed goal line. X values are epoch days.
+ * and a dashed goal line. X values are epoch days (fractions allowed).
  */
 @Composable
 fun WeightChart(
-    trend: List<Pair<Long, Double>>,
-    readings: List<Pair<Long, Double>>,
+    trend: List<Pair<Double, Double>>,
+    readings: List<Pair<Double, Double>>,
     goal: Double,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
@@ -557,23 +569,28 @@ fun WeightChart(
     val dotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     Canvas(modifier) {
         if (points.isEmpty()) return@Canvas
-        val values = points.map { it.second } + readings.map { it.second } + goal
-        val min = values.min() - 1.0
-        val max = values.max() + 1.0
+        // Zoom to your own readings so small changes are visible; the goal line is drawn only
+        // when it falls inside that range (the goal value is shown under the chart anyway).
+        val values = points.map { it.second } + readings.map { it.second }
+        val pad = maxOf(0.6, (values.max() - values.min()) * 0.15)
+        val min = values.min() - pad
+        val max = values.max() + pad
         val t0 = points.first().first
         val t1 = points.last().first
-        val span = (t1 - t0).coerceAtLeast(1L).toFloat()
-        fun x(t: Long) = if (points.size == 1) size.width / 2 else (t - t0) / span * size.width
+        val span = (t1 - t0).coerceAtLeast(0.01)
+        fun x(t: Double) = if (points.size == 1) size.width / 2 else ((t - t0) / span * size.width).toFloat()
         fun y(v: Double) = (size.height * (1 - (v - min) / (max - min))).toFloat()
 
         drawLine(grid, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
-        drawLine(
-            goalColor.copy(alpha = 0.6f),
-            Offset(0f, y(goal)),
-            Offset(size.width, y(goal)),
-            strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
-        )
+        if (goal in min..max) {
+            drawLine(
+                goalColor.copy(alpha = 0.6f),
+                Offset(0f, y(goal)),
+                Offset(size.width, y(goal)),
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
+            )
+        }
 
         val line = Path()
         points.forEachIndexed { index, (t, v) ->

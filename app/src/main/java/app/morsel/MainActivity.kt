@@ -97,6 +97,12 @@ import kotlinx.serialization.Serializable
 class MainActivity : ComponentActivity() {
     private var ready = false
 
+    override fun onResume() {
+        super.onResume()
+        // Coming back after the phone slept through midnight: update "today" straight away.
+        (application as MorselApp).container.clock.refresh()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition { !ready }
         super.onCreate(savedInstanceState)

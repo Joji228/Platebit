@@ -46,6 +46,7 @@ enum class MealType(val title: String) {
 
     companion object {
         fun forTime(time: LocalTime = LocalTime.now()): MealType = when {
+            time < LocalTime.of(5, 0) -> SNACK // eating after midnight is a late snack, not breakfast
             time < LocalTime.of(10, 30) -> BREAKFAST
             time < LocalTime.of(15, 0) -> LUNCH
             time < LocalTime.of(17, 30) -> SNACK

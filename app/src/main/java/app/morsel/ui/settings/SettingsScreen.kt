@@ -22,6 +22,13 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -44,6 +51,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import app.morsel.data.PHOTO_DAYS
+import app.morsel.data.formatBytes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,7 +101,9 @@ fun SettingsScreen(
     var targetDialog by remember { mutableStateOf(false) }
     var waterDialog by remember { mutableStateOf(false) }
     var resetDialog by remember { mutableStateOf(false) }
+    var photoDialog by remember { mutableStateOf(false) }
     val photoStorage by viewModel.photoStorage.collectAsStateWithLifecycle()
+    val storage by viewModel.storage.collectAsStateWithLifecycle()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let { viewModel.export(context, it) }
@@ -153,21 +163,6 @@ fun SettingsScreen(
                             )
                         },
                         {
-                            val estimate = state.estimate
-                            SwitchRow(
-                                title = "Smart target",
-                                subtitle = when {
-                                    p?.smartTarget == false -> "Off. Using the formula only"
-                                    estimate == null -> "Learns your real burn from meals and weigh-ins"
-                                    estimate.active -> "Your measured burn: ${estimate.measuredTdee!!.format()} kcal a day, " +
-                                        "${(estimate.confidence * 100).roundToInt()}% trusted (${estimate.daysLogged} days logged)"
-                                    else -> "Learning: ${estimate.waitingFor} (${estimate.daysLogged} of ${estimate.daysNeeded} days logged)"
-                                },
-                                checked = p?.smartTarget != false,
-                                onChange = { on -> viewModel.updateProfile { it.copy(smartTarget = on) } },
-                            )
-                        },
-                        {
                             ListRow(
                                 "Water goal",
                                 subtitle = if (p?.customWaterMl != null) "Custom target" else "Calculated from your weight and activity",
@@ -175,6 +170,24 @@ fun SettingsScreen(
                                 icon = Icons.Rounded.WaterDrop,
                                 iconTint = Nutrient.Water,
                                 onClick = { waterDialog = true },
+                            )
+                        },
+                        {
+                            val estimate = state.estimate
+                            SwitchRow(
+                                title = "Smart target",
+                                subtitle = when {
+                                    p?.smartTarget == false -> "Off. Your calories use the standard formula only"
+                                    estimate == null -> "Tunes your daily calories to how your body really responds"
+                                    estimate.active -> "Your real burn is about ${estimate.measuredTdee!!.format()} kcal a day, " +
+                                        "measured from your meals and weigh-ins (${(estimate.confidence * 100).roundToInt()}% trusted)"
+                                    else -> "Learning your real burn. ${estimate.waitingFor} " +
+                                        "(${estimate.daysLogged} of ${estimate.daysNeeded} days of meals logged)"
+                                },
+                                checked = p?.smartTarget != false,
+                                onChange = { on -> viewModel.updateProfile { it.copy(smartTarget = on) } },
+                                icon = Icons.Rounded.Psychology,
+                                iconTint = Nutrient.Fat,
                             )
                         },
                     ),
@@ -244,9 +257,22 @@ fun SettingsScreen(
                             ListRow(
                                 "Meal photos",
                                 subtitle = (photoStorage?.second?.let { if (it == 1) "1 photo · " else "$it photos · " } ?: "") +
-                                    "deleted after $PHOTO_DAYS days, meals stay logged",
+                                    "deleted after $PHOTO_DAYS days, meals stay logged. Tap to delete now",
                                 value = photoStorage?.first,
                                 icon = Icons.Rounded.PhotoLibrary,
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = { photoDialog = true },
+                            )
+                        },
+                        {
+                            val usage = storage
+                            ListRow(
+                                "Storage used",
+                                subtitle = usage?.let {
+                                    "App ${formatBytes(it.appBytes)} · your data ${formatBytes(it.dataBytes)} (meals, photos, settings)"
+                                },
+                                value = usage?.let { formatBytes(it.totalBytes) },
+                                icon = Icons.Rounded.Storage,
                                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
@@ -351,6 +377,37 @@ fun SettingsScreen(
             },
         )
     }
+    if (photoDialog) {
+        val count = photoStorage?.second ?: 0
+        AlertDialog(
+            onDismissRequest = { photoDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text(if (count == 0) "No meal photos" else "Delete meal photos?") },
+            text = {
+                Text(
+                    if (count == 0) {
+                        "There are no meal photos saved right now."
+                    } else {
+                        "Removes ${if (count == 1) "1 photo" else "all $count photos"} (${photoStorage?.first}). " +
+                            "Every meal stays logged with its calories and macros. This can't be undone."
+                    },
+                )
+            },
+            confirmButton = {
+                if (count == 0) {
+                    TextButton(onClick = { photoDialog = false }) { Text("OK") }
+                } else {
+                    TextButton(onClick = {
+                        photoDialog = false
+                        viewModel.deleteAllPhotos()
+                    }) { Text("Delete photos", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            dismissButton = {
+                if (count > 0) TextButton(onClick = { photoDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
     if (resetDialog) {
         ResetDialog(
             onDismiss = { resetDialog = false },
@@ -371,7 +428,14 @@ fun SettingsScreen(
 }
 
 @Composable
-internal fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    icon: ImageVector? = null,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -379,6 +443,19 @@ internal fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChan
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Same icon tile as ListRow, so switch rows line up with the rows around them.
+        if (icon != null) {
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconTint.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, Modifier.size(18.dp), tint = iconTint)
+            }
+            Spacer(Modifier.width(14.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

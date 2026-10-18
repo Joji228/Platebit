@@ -48,6 +48,15 @@ class NutritionTest {
     }
 
     @Test
+    fun mealTypeFollowsTheClock() {
+        assertEquals(MealType.SNACK, MealType.forTime(java.time.LocalTime.of(0, 30)))
+        assertEquals(MealType.BREAKFAST, MealType.forTime(java.time.LocalTime.of(8, 0)))
+        assertEquals(MealType.LUNCH, MealType.forTime(java.time.LocalTime.of(13, 0)))
+        assertEquals(MealType.DINNER, MealType.forTime(java.time.LocalTime.of(20, 0)))
+        assertEquals(MealType.SNACK, MealType.forTime(java.time.LocalTime.of(23, 0)))
+    }
+
+    @Test
     fun customTargetWins() {
         assertEquals(2000, Nutrition.targets(man.copy(customKcal = 2000), 90.0).kcal)
     }

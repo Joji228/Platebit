@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 
 data class EditableItem(
     val key: Long,
@@ -42,8 +44,14 @@ data class ResultState(
     val savedPhotoPath: String? = null,
     val note: String? = null,
     val saving: Boolean = false,
+    /** The day this meal counts towards. */
+    val date: LocalDate = LocalDate.now(),
+    val today: LocalDate = LocalDate.now(),
 ) {
     val total: Macros get() = items.fold(Macros()) { acc, item -> acc + item.macros(multiplier) }
+
+    /** Weight of everything on the plate at the chosen portion. */
+    val totalGrams: Double get() = items.sumOf { it.grams } * multiplier
 }
 
 class ResultViewModel(private val app: AppContainer, private val mealId: Long) : ViewModel() {
@@ -69,6 +77,8 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                     source = saved.meal.source,
                     savedPhotoPath = saved.meal.photoPath,
                     note = saved.meal.note,
+                    date = LocalDate.parse(saved.meal.date),
+                    today = app.clock.today.value,
                 )
             } else {
                 val draft = app.draft
@@ -85,6 +95,8 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                     fallbackReason = draft?.result?.fallbackReason,
                     photos = draft?.photos.orEmpty(),
                     note = draft?.note,
+                    date = draft?.date ?: app.clock.today.value,
+                    today = app.clock.today.value,
                 )
             }
         }
@@ -114,11 +126,13 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             val photo = s.savedPhotoPath ?: s.photos.firstOrNull()?.let { runCatching { app.photos.saveThumbnail(it) }.getOrNull() }
-            val now = System.currentTimeMillis()
+            // A meal added to a past day is stamped with that day at the current time of day.
+            val stamp = if (s.date == s.today) System.currentTimeMillis()
+            else s.date.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val meal = MealEntity(
                 id = original?.id ?: 0,
-                date = original?.date ?: LocalDate.now().toString(),
-                timestamp = original?.timestamp ?: now,
+                date = original?.date ?: s.date.toString(),
+                timestamp = original?.timestamp ?: stamp,
                 mealType = s.mealType.name,
                 name = s.name.ifBlank { s.items.firstOrNull()?.name ?: "Meal" },
                 photoPath = photo,
@@ -140,6 +154,9 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
             if (!s.isEdit) {
                 app.draft = null
                 app.photos.clearCaptures()
+                // New meals always count towards today, so show today instead of leaving you
+                // on whichever past day you were looking at.
+                app.viewedDay.value = app.clock.today.value
             }
             onDone()
         }

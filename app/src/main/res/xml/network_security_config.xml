@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Plain http is permitted at the system level only so the Custom AI engine can reach a server
+    on the user's own network (for example http://192.168.1.10:11434/v1). The app itself refuses
+    http for any non-local address before sending anything: see app.morsel.ai.UrlPolicy.
+    All built-in engines use fixed https addresses.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
