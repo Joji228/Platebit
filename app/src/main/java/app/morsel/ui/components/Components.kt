@@ -335,8 +335,10 @@ fun NumberStepper(
     unit: String,
     modifier: Modifier = Modifier,
     decimals: Int = 0,
+    /** Precision kept for a typed value; the −/+ buttons move by [step]. */
+    typedStep: Double = step,
 ) {
-    fun snap(v: Double) = ((v / step).roundToInt() * step).coerceIn(range.start, range.endInclusive)
+    fun snap(v: Double, by: Double = step) = ((v / by).roundToInt() * by).coerceIn(range.start, range.endInclusive)
     var editing by remember { mutableStateOf(false) }
     MorselCard(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -357,7 +359,7 @@ fun NumberStepper(
                         // Live updates, so tapping Save while the keyboard is still up keeps what was typed.
                         onTyped = { onValueChange(it.coerceIn(range.start, range.endInclusive)) },
                         onFinish = {
-                            onValueChange(snap(value))
+                            onValueChange(snap(value, typedStep))
                             editing = false
                         },
                     )

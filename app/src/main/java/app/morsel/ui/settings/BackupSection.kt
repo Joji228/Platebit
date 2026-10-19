@@ -93,7 +93,9 @@ fun rememberGoogleSignIn(
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         awaitingGoogle = false
-        if (result.resultCode == Activity.RESULT_OK) scope.launch { attempt { backup.finishSignIn(result.data) } }
+        // Google returns its error (wrong app setup, no network…) with a non-OK result, so read the answer either way;
+        // only a plain back-out with no data is ignored, and a cancel still shows nothing.
+        if (result.resultCode == Activity.RESULT_OK || result.data != null) scope.launch { attempt { backup.finishSignIn(result.data) } }
     }
 
     val busy = working || awaitingGoogle

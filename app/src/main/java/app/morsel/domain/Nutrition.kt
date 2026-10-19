@@ -35,7 +35,7 @@ data class UserProfile(
     /** Null means the water goal is calculated from sex, weight, height and activity. */
     val customWaterMl: Int? = null,
     /** Adjust the calorie target from logged meals and weight trend (see [AdaptiveTdee]). */
-    val smartTarget: Boolean = true,
+    val smartTarget: Boolean = false,
 )
 
 enum class MealType(val title: String) {

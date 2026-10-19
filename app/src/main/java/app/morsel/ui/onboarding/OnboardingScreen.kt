@@ -204,22 +204,25 @@ private fun Weight(state: OnboardingState, vm: OnboardingViewModel) {
             state.profile.startWeightKg,
             { v -> vm.update { it.copy(startWeightKg = v) } },
             35.0..250.0,
-            0.1,
+            0.5,
             "kg",
             decimals = 1,
+            typedStep = 0.1,
         )
         Spacer(Modifier.height(12.dp))
     }
-    NumberStepper("Current weight", state.currentWeight, vm::setCurrentWeight, 35.0..250.0, 0.1, "kg", decimals = 1)
+    // ±0.5 kg per press (faster than 0.1); a typed weight keeps its decimal.
+    NumberStepper("Current weight", state.currentWeight, vm::setCurrentWeight, 35.0..250.0, 0.5, "kg", decimals = 1, typedStep = 0.1)
     Spacer(Modifier.height(12.dp))
     NumberStepper(
         "Goal weight",
         state.profile.goalWeightKg,
         { v -> vm.update { it.copy(goalWeightKg = v) } },
         35.0..250.0,
-        0.1,
+        0.5,
         "kg",
         decimals = 1,
+        typedStep = 0.1,
     )
 }
 
