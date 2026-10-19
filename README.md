@@ -16,9 +16,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/1-dashboard.png" width="23%" alt="Dashboard">
-  <img src="docs/screenshots/2-trend-and-meals.png" width="23%" alt="Weight trend and meals">
-  <img src="docs/screenshots/3-scan-result.png" width="23%" alt="Scan result">
+  <img src="docs/screenshots/1-dashboard.png?v=2" width="23%" alt="Dashboard">
+  <img src="docs/screenshots/2-trend-and-meals.png?v=2" width="23%" alt="Weight trend and meals">
+  <img src="docs/screenshots/3-scan-result.png?v=2" width="23%" alt="Scan result">
   <img src="docs/screenshots/4-ai-engine.png" width="23%" alt="AI engine settings">
 </p>
 
