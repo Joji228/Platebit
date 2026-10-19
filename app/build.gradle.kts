@@ -101,5 +101,10 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
 
+    // Google Drive backup: Google account access, and background uploads.
+    implementation(libs.play.services.auth)
+    implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.androidx.work.runtime)
+
     testImplementation(libs.junit)
 }

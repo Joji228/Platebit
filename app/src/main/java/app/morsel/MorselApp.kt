@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import app.morsel.ai.AiService
 import app.morsel.ai.AnalysisResult
+import app.morsel.backup.CloudBackup
 import app.morsel.ble.MiScaleScanner
 import app.morsel.data.DayClock
 import app.morsel.data.MorselRepository
@@ -17,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -49,6 +52,7 @@ class AppContainer(context: Context) {
     val storage = StorageInfo(context)
     val ai = AiService(settings)
     val scale = MiScaleScanner(context)
+    val backup = CloudBackup(context, repository, settings, scope)
 
     /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */
     val manualWeighInOpen = MutableStateFlow(false)
@@ -68,6 +72,17 @@ class AppContainer(context: Context) {
                 }
             }
         }
+    }
+
+    init {
+        // Google Drive backup: any change to the logs, profile or settings queues an upload.
+        scope.launch {
+            merge(
+                database.invalidationTracker.createFlow("meals", "food_items", "water", "weights", emitInitialState = false),
+                settings.backupChanges.drop(1),
+            ).collect { backup.onDataChanged() }
+        }
+        scope.launch { runCatching { backup.onAppStart() } }
     }
 
     init {

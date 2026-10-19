@@ -260,6 +260,8 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                     val vm = viewModel { OnboardingViewModel(container, route.edit) }
                     OnboardingScreen(
                         viewModel = vm,
+                        backup = container.backup,
+                        onRestored = { nav.navigate(TodayRoute) { popUpTo(0) { inclusive = true } } },
                         onDone = {
                             if (route.edit) {
                                 nav.popBackStack()

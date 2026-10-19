@@ -88,6 +88,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         }
     }
 
+    val backup = app.backup
+
     val keyCheck = MutableStateFlow<KeyCheck>(KeyCheck.Idle)
     val message = MutableStateFlow<String?>(null)
 
@@ -133,6 +135,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     /** Erases meals, water, weights, photos and the profile; optionally the API keys too. */
     fun resetAll(keepKeys: Boolean, onDone: () -> Unit) {
         viewModelScope.launch {
+            // Signing out first, so the now-empty phone can't touch the Google Drive backup.
+            runCatching { app.backup.signOut() }
             app.repository.restore(Backup())
             app.photos.deleteAll()
             app.settings.clear(keepKeys)
@@ -191,7 +195,7 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     fun export(context: Context, uri: Uri) {
         viewModelScope.launch {
             runCatching {
-                val backup = app.repository.export(app.settings.profile.first())
+                val backup = app.repository.export(app.settings.profile.first(), app.settings.backup())
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use {
                         it.write(json.encodeToString(Backup.serializer(), backup).toByteArray())
@@ -212,6 +216,7 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
                 val backup = json.decodeFromString(Backup.serializer(), text)
                 app.repository.restore(backup)
                 backup.profile?.let { app.settings.saveProfile(it) }
+                backup.settings?.let { app.settings.restore(it) }
                 backup
             }.onSuccess { message.value = "Imported ${it.meals.size} meals" }
                 .onFailure { message.value = "Import failed: ${it.message}" }

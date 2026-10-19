@@ -12,16 +12,21 @@ import kotlinx.serialization.Serializable
 import java.io.File
 import java.time.LocalDate
 
-/** Everything the app stores, minus API keys. Used for export and import. */
+/** Everything the app stores, minus API keys and photos. Used for export/import and the Google Drive backup. */
 @Serializable
 data class Backup(
-    val version: Int = 1,
+    val version: Int = 2,
     val profile: UserProfile? = null,
     val meals: List<MealEntity> = emptyList(),
     val items: List<FoodItemEntity> = emptyList(),
     val water: List<WaterEntity> = emptyList(),
     val weights: List<WeightEntity> = emptyList(),
-)
+    /** Added in version 2. Version 1 files have none, and restoring them leaves settings as they are. */
+    val settings: SettingsBackup? = null,
+) {
+    /** Nothing logged at all: a fresh install, or a phone that was just erased. */
+    val isEmpty get() = meals.isEmpty() && water.isEmpty() && weights.isEmpty()
+}
 
 const val PHOTO_DAYS = 30
 
@@ -113,8 +118,9 @@ class MorselRepository(private val db: MorselDatabase) {
         ),
     )
 
-    suspend fun export(profile: UserProfile?) = Backup(
+    suspend fun export(profile: UserProfile?, settings: SettingsBackup?) = Backup(
         profile = profile,
+        settings = settings,
         meals = db.meals().allMeals(),
         items = db.meals().allItems(),
         water = db.water().all(),

@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Key
@@ -302,22 +301,8 @@ fun SettingsScreen(
                 )
             }
 
-            item { GroupLabel("Account") }
-            item {
-                GroupedList(
-                    rows = listOf(
-                        {
-                            ListRow(
-                                "Sign in with Google",
-                                subtitle = "Optional cloud backup is coming in a later version",
-                                icon = Icons.Rounded.AccountCircle,
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                enabled = false,
-                            )
-                        },
-                    ),
-                )
-            }
+            item { GroupLabel("Google Drive backup") }
+            item { BackupSection(viewModel.backup, onMessage = { viewModel.message.value = it }) }
 
             item { GroupLabel("Smart scale") }
             item {
@@ -361,7 +346,8 @@ fun SettingsScreen(
             item {
                 Text(
                     "Platebit ${context.packageManager.getPackageInfo(context.packageName, 0).versionName} · " +
-                        "Your data stays on this phone. Photos are sent only to the AI provider you choose.",
+                        "Your data stays on this phone, plus your own Google Drive if you turn on backup. " +
+                        "Photos are sent only to the AI provider you choose.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp),
@@ -558,7 +544,8 @@ private fun ResetDialog(onDismiss: () -> Unit, onConfirm: (keepKeys: Boolean) ->
             Column {
                 Text(
                     "All meals, water, weight history, photos and your profile will be deleted from this phone. " +
-                        "This can't be undone. Export a backup first if you might want it back.",
+                        "This can't be undone. Export a backup first if you might want it back.\n\n" +
+                        "If Google Drive backup is on, this phone signs out first and the backup in your Drive is kept.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(8.dp))

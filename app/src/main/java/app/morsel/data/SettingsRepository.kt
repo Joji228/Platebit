@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -11,7 +12,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.morsel.domain.UserProfile
 import app.morsel.ui.theme.AccentColor
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -20,6 +24,22 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 private val Context.dataStore by preferencesDataStore("morsel_settings")
+
+/**
+ * The settings a backup carries, so a restored phone looks and works like the old one.
+ * API keys and the custom service address never leave the phone.
+ */
+@Serializable
+data class SettingsBackup(
+    val theme: String? = null,
+    val accent: String? = null,
+    val scaleEnabled: Boolean? = null,
+    val primary: String? = null,
+    val fallback: Boolean? = null,
+    val fallbackProvider: String? = null,
+    val engines: String? = null,
+    val models: Map<String, String> = emptyMap(),
+)
 
 class SettingsRepository(context: Context) {
     private val store = context.applicationContext.dataStore
@@ -65,6 +85,38 @@ class SettingsRepository(context: Context) {
             fallbackProvider = Provider.entries.firstOrNull { it.name == prefs[fallbackProviderKey] },
             engines = prefs[enginesKey].orEmpty().split(',').mapNotNull { name -> Provider.entries.firstOrNull { it.name == name } },
         )
+    }
+
+    private fun backupOf(prefs: Preferences) = SettingsBackup(
+        theme = prefs[themeKey],
+        accent = prefs[accentKey],
+        scaleEnabled = prefs[scaleKey],
+        primary = prefs[primaryKey],
+        fallback = prefs[fallbackKey],
+        fallbackProvider = prefs[fallbackProviderKey],
+        engines = prefs[enginesKey],
+        models = Provider.entries.mapNotNull { p -> prefs[modelPref(p)]?.takeIf { it.isNotBlank() }?.let { p.name to it } }.toMap(),
+    )
+
+    suspend fun backup(): SettingsBackup = backupOf(store.data.first())
+
+    /** Emits whenever the profile or a backed-up setting changes; key edits don't count. */
+    val backupChanges: Flow<Any> = store.data.map { prefs -> prefs[profileKey] to backupOf(prefs) }.distinctUntilChanged()
+
+    /** Puts restored settings in place. Missing values (older backups) leave the current ones alone. */
+    suspend fun restore(backup: SettingsBackup) {
+        store.edit { prefs ->
+            backup.theme?.let { prefs[themeKey] = it }
+            backup.accent?.let { prefs[accentKey] = it }
+            backup.scaleEnabled?.let { prefs[scaleKey] = it }
+            backup.primary?.let { prefs[primaryKey] = it }
+            backup.fallback?.let { prefs[fallbackKey] = it }
+            backup.fallbackProvider?.let { prefs[fallbackProviderKey] = it }
+            backup.engines?.let { prefs[enginesKey] = it }
+            backup.models.forEach { (name, model) ->
+                Provider.entries.firstOrNull { it.name == name }?.let { prefs[modelPref(it)] = model }
+            }
+        }
     }
 
     /**
