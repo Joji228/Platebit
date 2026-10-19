@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.Provider
 import app.morsel.data.ThemeMode
+import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -112,6 +113,7 @@ fun SettingsScreen(
     var targetDialog by remember { mutableStateOf(false) }
     var waterDialog by remember { mutableStateOf(false) }
     var resetDialog by remember { mutableStateOf(false) }
+    var scaleConfirm by remember { mutableStateOf(false) }
     var photoDialog by remember { mutableStateOf(false) }
     val photoStorage by viewModel.photoStorage.collectAsStateWithLifecycle()
     val storage by viewModel.storage.collectAsStateWithLifecycle()
@@ -311,6 +313,28 @@ fun SettingsScreen(
                 )
             }
 
+            item { GroupLabel("Smart scale") }
+            item {
+                GroupedList(
+                    rows = listOf(
+                        {
+                            SwitchRow(
+                                title = "Xiaomi smart scale",
+                                subtitle = if (state.scaleEnabled) {
+                                    "On. Use Weigh in on the Weight card; tap the card for your Body screen"
+                                } else {
+                                    "For the Mi Body Composition Scale 2 (XMTZC05HM). Adds weigh-ins over Bluetooth and a Body screen"
+                                },
+                                checked = state.scaleEnabled,
+                                // Turning it on asks first; turning it off doesn't need to.
+                                onChange = { on -> if (on) scaleConfirm = true else viewModel.setScaleEnabled(false) },
+                                icon = Icons.Rounded.MonitorWeight,
+                            )
+                        },
+                    ),
+                )
+            }
+
             item { GroupLabel("Danger zone") }
             item {
                 GroupedList(
@@ -420,6 +444,29 @@ fun SettingsScreen(
             dismissButton = {
                 if (count > 0) TextButton(onClick = { photoDialog = false }) { Text("Cancel") }
             },
+        )
+    }
+    if (scaleConfirm) {
+        AlertDialog(
+            onDismissRequest = { scaleConfirm = false },
+            title = { Text("Turn on the smart scale?") },
+            text = {
+                Text(
+                    "This works only with the Xiaomi Mi Body Composition Scale 2, model XMTZC05HM: the square glass scale " +
+                        "with metal pads on top. Other Xiaomi scales won't be recognized.\n\n" +
+                        "Platebit listens for the scale's Bluetooth signal while you stand on it. There's nothing to pair " +
+                        "and it never needs your location, so the Zepp Life app keeps working as before.\n\n" +
+                        "You'll get a Weigh in button on the Weight card and a Body screen with body fat, muscle, water and more. " +
+                        "These are estimates for following trends, not medical measurements.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setScaleEnabled(true)
+                    scaleConfirm = false
+                }) { Text("Turn on") }
+            },
+            dismissButton = { TextButton(onClick = { scaleConfirm = false }) { Text("Cancel") } },
         )
     }
     if (resetDialog) {
@@ -534,7 +581,7 @@ internal fun GroupLabel(text: String) {
     )
 }
 
-/** Ten bright accent colors in two rows; the chosen one carries a check mark and a ring. */
+/** The accent colors in one row; the chosen one carries a check mark and a ring. */
 @Composable
 private fun AccentPicker(selected: AccentColor, onSelect: (AccentColor) -> Unit, modifier: Modifier = Modifier) {
     val haptics = LocalHapticFeedback.current

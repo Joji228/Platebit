@@ -185,6 +185,7 @@ fun DashboardScreen(
     onOpenBody: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scaleEnabled by viewModel.scaleEnabled.collectAsStateWithLifecycle(initialValue = false)
     var showWeightDialog by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showScale by remember { mutableStateOf(false) }
@@ -241,6 +242,7 @@ fun DashboardScreen(
             item {
                 WeightCard(
                     state,
+                    scaleEnabled = scaleEnabled,
                     onLog = { showWeightDialog = true },
                     onHistory = { showHistory = true },
                     onScale = { showScale = true },
@@ -478,7 +480,14 @@ private fun WaterCard(ml: Int, goalMl: Int, onAdd: () -> Unit, onUndo: () -> Uni
 }
 
 @Composable
-private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -> Unit, onScale: () -> Unit, onOpen: () -> Unit) {
+private fun WeightCard(
+    state: DashboardState,
+    scaleEnabled: Boolean,
+    onLog: () -> Unit,
+    onHistory: () -> Unit,
+    onScale: () -> Unit,
+    onOpen: () -> Unit,
+) {
     val profile = state.profile ?: return
     val current = state.currentWeight ?: profile.startWeightKg
     val change = current - profile.startWeightKg
@@ -501,8 +510,8 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
         trend.forEach { add(it.date.toEpochDay().toDouble() to it.trend) }
     }
     val readings = trend.map { it.date.toEpochDay().toDouble() to it.raw }
-    // Tapping anywhere outside the buttons opens the Body screen with the full analysis.
-    MorselCard(onClick = onOpen) {
+    // With the scale turned on, tapping anywhere outside the buttons opens the Body screen.
+    MorselCard(onClick = if (scaleEnabled) onOpen else null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Weight", style = MaterialTheme.typography.titleMedium)
             if (abs(change) >= 0.05) {
@@ -516,13 +525,20 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
             if (state.plan.weighIns.isNotEmpty()) {
                 RoundIconButton(Icons.Rounded.History, "Weigh-in history", onHistory, size = 40.dp)
             }
+            if (!scaleEnabled) {
+                // Kept in the header so the floating camera button never covers it.
+                Spacer(Modifier.width(8.dp))
+                SecondaryButton("Log", onLog, icon = Icons.Rounded.Add)
+            }
         }
-        // Their own row under the title, so neither button is squeezed narrow enough to wrap its label.
-        // Kept above the chart so the floating camera button never covers them.
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton("Weigh in", onScale, Modifier.weight(1f), icon = Icons.Rounded.MonitorWeight, accent = true)
-            SecondaryButton("Log", onLog, Modifier.weight(1f), icon = Icons.Rounded.Add)
+        if (scaleEnabled) {
+            // Their own row under the title, so neither button is squeezed narrow enough to wrap its label.
+            // Kept above the chart so the floating camera button never covers them.
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SecondaryButton("Weigh in", onScale, Modifier.weight(1f), icon = Icons.Rounded.MonitorWeight, accent = true)
+                SecondaryButton("Log", onLog, Modifier.weight(1f), icon = Icons.Rounded.Add)
+            }
         }
         Spacer(Modifier.height(14.dp))
         Box(contentAlignment = Alignment.Center) {
@@ -559,15 +575,17 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
             WeightStat("Trend", current, Modifier.weight(1f), highlight = true)
             WeightStat("Goal", profile.goalWeightKg, Modifier.weight(1f))
         }
-        // The latest weigh-in that came from the smart scale carries body composition.
-        state.plan.weighIns.lastOrNull { it.impedance != null }?.compositionLine(profile)?.let { line ->
-            Spacer(Modifier.height(14.dp))
-            Text(line, style = MaterialTheme.typography.bodySmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurface)
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("BMI, body composition and trends", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+        if (scaleEnabled) {
+            // The latest weigh-in that came from the smart scale carries body composition.
+            state.plan.weighIns.lastOrNull { it.impedance != null }?.compositionLine(profile)?.let { line ->
+                Spacer(Modifier.height(14.dp))
+                Text(line, style = MaterialTheme.typography.bodySmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurface)
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("BMI, body composition and trends", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }

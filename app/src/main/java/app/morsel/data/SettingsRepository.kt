@@ -29,6 +29,7 @@ class SettingsRepository(context: Context) {
     private val profileKey = stringPreferencesKey("profile")
     private val themeKey = stringPreferencesKey("theme")
     private val accentKey = stringPreferencesKey("accent")
+    private val scaleKey = booleanPreferencesKey("scale_enabled")
     private val primaryKey = stringPreferencesKey("ai_primary")
     private val fallbackKey = booleanPreferencesKey("ai_fallback")
     private val fallbackProviderKey = stringPreferencesKey("ai_fallback_provider")
@@ -49,6 +50,9 @@ class SettingsRepository(context: Context) {
     }
 
     val accent: Flow<AccentColor> = store.data.map { prefs -> AccentColor.fromName(prefs[accentKey]) }
+
+    /** The Xiaomi scale integration is opt-in; off until the user turns it on in Settings. */
+    val scaleEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[scaleKey] ?: false }
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
@@ -118,6 +122,10 @@ class SettingsRepository(context: Context) {
 
     suspend fun setAccent(accent: AccentColor) {
         store.edit { it[accentKey] = accent.name }
+    }
+
+    suspend fun setScaleEnabled(enabled: Boolean) {
+        store.edit { it[scaleKey] = enabled }
     }
 
     suspend fun setPrimary(provider: Provider) {

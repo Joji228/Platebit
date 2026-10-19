@@ -34,6 +34,7 @@ data class SettingsState(
     val ai: AiSettings = AiSettings(),
     val theme: ThemeMode = ThemeMode.DARK,
     val accent: AccentColor = AccentColor.Default,
+    val scaleEnabled: Boolean = false,
 )
 
 sealed interface KeyCheck {
@@ -52,8 +53,12 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         app.settings.ai,
         app.settings.theme,
         app.settings.accent,
-    ) { plan, ai, theme, accent ->
-        SettingsState(profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme, accent = accent)
+        app.settings.scaleEnabled,
+    ) { plan, ai, theme, accent, scale ->
+        SettingsState(
+            profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme, accent = accent,
+            scaleEnabled = scale,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
     /** Size and count of stored meal photos, e.g. "3.2 MB" and 41. */
@@ -89,6 +94,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { app.settings.setTheme(mode) }
 
     fun setAccent(accent: AccentColor) = viewModelScope.launch { app.settings.setAccent(accent) }
+
+    fun setScaleEnabled(enabled: Boolean) = viewModelScope.launch { app.settings.setScaleEnabled(enabled) }
 
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
 

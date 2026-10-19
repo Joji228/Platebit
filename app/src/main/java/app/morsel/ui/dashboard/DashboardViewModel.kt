@@ -77,6 +77,9 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
         viewModelScope.launch { app.repository.logWeight(kg) }
     }
 
+    /** Off by default; the Weigh in button and the Body screen only appear once it's turned on in Settings. */
+    val scaleEnabled = app.settings.scaleEnabled
+
     val scale get() = app.scale
 
     /** Live frames from the smart scale for as long as the weigh-in dialog is open. */

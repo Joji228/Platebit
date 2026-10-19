@@ -7,10 +7,10 @@ import org.junit.Test
 
 class AccentColorTest {
     @Test
-    fun offersTenDistinctColors() {
-        assertEquals(10, AccentColor.entries.size)
-        assertEquals(10, AccentColor.entries.map { it.dark }.toSet().size)
-        assertEquals(10, AccentColor.entries.map { it.light }.toSet().size)
+    fun offersFiveDistinctColors() {
+        assertEquals(5, AccentColor.entries.size)
+        assertEquals(5, AccentColor.entries.map { it.dark }.toSet().size)
+        assertEquals(5, AccentColor.entries.map { it.light }.toSet().size)
     }
 
     @Test
@@ -22,8 +22,8 @@ class AccentColorTest {
     @Test
     fun unknownOrMissingNamesFallBackToTheDefault() {
         assertEquals(AccentColor.Default, AccentColor.fromName(null))
-        assertEquals(AccentColor.Default, AccentColor.fromName("MAGENTA"))
-        assertEquals(AccentColor.ORANGE, AccentColor.fromName("ORANGE"))
+        assertEquals(AccentColor.Default, AccentColor.fromName("ORANGE"))
+        assertEquals(AccentColor.PINK, AccentColor.fromName("PINK"))
     }
 
     @Test
