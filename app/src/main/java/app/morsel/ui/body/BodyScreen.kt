@@ -22,6 +22,16 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.foundation.verticalScroll
+import android.widget.Toast
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -103,6 +113,12 @@ private val CHART_METRICS = listOf(Metric.WEIGHT, Metric.BMI, Metric.FAT, Metric
 fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showScale by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The whole page, not just what fits on screen, is recorded here so it can be saved as one tall image.
+    val page = rememberGraphicsLayer()
+    val pageBackground = MaterialTheme.colorScheme.background
+    var saving by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -118,36 +134,67 @@ fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
             RoundIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
             Spacer(Modifier.width(14.dp))
             Text("Body", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            if (state.latest != null) {
+                RoundIconButton(
+                    Icons.Rounded.Share,
+                    "Save the whole page to the gallery",
+                    {
+                        if (!saving) {
+                            saving = true
+                            scope.launch {
+                                val saved = runCatching { savePageToGallery(context, page.toImageBitmap().asAndroidBitmap()) }.isSuccess
+                                Toast.makeText(context, if (saved) "Saved the full page to your gallery" else "Couldn't save the image", Toast.LENGTH_SHORT).show()
+                                saving = false
+                            }
+                        }
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             RoundIconButton(Icons.Rounded.MonitorWeight, "Weigh in with smart scale", { showScale = true })
         }
         if (state.loading) return@Column
 
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+        // A plain scrolling column (the page is short), so the inner column is laid out at full
+        // height and can be recorded whole for the gallery image.
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.navigationBars),
         ) {
+            Column(
+                Modifier
+                    .drawWithContent {
+                        page.record {
+                            drawRect(pageBackground)
+                            this@drawWithContent.drawContent()
+                        }
+                        drawLayer(page)
+                    }
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             val latest = state.latest
             if (latest == null) {
-                item { EmptyCard("No weigh-ins yet", "Weigh in with your scale or log your weight to see your trends here.") { showScale = true } }
-                return@LazyColumn
+                EmptyCard("No weigh-ins yet", "Weigh in with your scale or log your weight to see your trends here.") { showScale = true }
+                return@Column
             }
             // Score first, then BMI, the weight progress and the composition analysis, with the
             // trend chart last.
             val scan = state.latestScan
-            if (scan != null) item { ScoreCard(scan, state.latestScanDate) }
-            item { BmiCard(latest) }
-            item { WeightHero(state, latest) }
+            if (scan != null) ScoreCard(scan, state.latestScanDate)
+            BmiCard(latest)
+            WeightHero(state, latest)
             if (scan == null) {
-                item {
+                run {
                     EmptyCard(
                         "Body composition",
                         "Weigh in barefoot on your smart scale to see body fat, muscle, water, bone, visceral fat and more.",
                     ) { showScale = true }
                 }
             } else {
-                item { CompositionCard(scan, state.previousScan, state.series) }
-                item {
+                CompositionCard(scan, state.previousScan, state.series)
+                run {
                     Text(
                         "Body composition is estimated from your weight, the scale's impedance reading and your profile, " +
                             "using Platebit's own formulas based on published research. Use it to follow trends, not as a medical measurement.",
@@ -157,7 +204,8 @@ fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
                     )
                 }
             }
-            item { ChartCard(state) }
+            ChartCard(state)
+            }
         }
     }
 
