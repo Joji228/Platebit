@@ -42,7 +42,7 @@ Needs Android 12 or newer. Calorie and body figures are estimates, not medical a
 
 New in 1.0. If you have a **Xiaomi Mi Body Composition Scale 2** (model **XMTZC05HM**), turn on **Settings → Smart scale** and Platebit reads it directly:
 
-- ⚖️ **Weigh in** from the Weight card. Step on the scale barefoot and Platebit picks up your weight and body impedance over Bluetooth. There's nothing to pair, no Xiaomi account, and Zepp Life keeps working.
+- ⚖️ **Hands-free weigh-ins.** Open Platebit and step on the scale barefoot: it picks up your weight and body impedance over Bluetooth and saves the weigh-in by itself. It only listens while the app is open, there's nothing to pair, no Xiaomi account, and Zepp Life keeps working. A reading more than 5 kg from your last one asks "Is this you?" first.
 - 🧍 **Body screen.** Tap the Weight card for a body score, BMI, and estimates of body fat, muscle, water, bone, visceral fat, BMR and body age, with trends over time.
 
 It's off by default, and other scale models aren't supported. Body composition is estimated from published formulas: good for following trends, not a medical measurement.
