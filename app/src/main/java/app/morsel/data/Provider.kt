@@ -50,7 +50,22 @@ data class AiSettings(
     /** Off by default: when off, only [primary] is ever used, and a failure is simply a failure. */
     val fallback: Boolean = false,
     val fallbackProvider: Provider? = null,
+    /**
+     * The engines the user has added on the AI engine screen, in order. Empty until the list is
+     * first edited; [activeEngines] then falls back to the engines that already have a key.
+     */
+    val engines: List<Provider> = emptyList(),
 ) {
+    /** What the AI engine screen shows: always includes [primary], never more than [MAX_ENGINES]. */
+    val activeEngines: List<Provider>
+        get() {
+            val chosen = engines.ifEmpty { Provider.entries.filter { keyFor(it).isNotBlank() } }
+            return (if (primary in chosen) chosen else listOf(primary) + chosen).distinct().take(MAX_ENGINES)
+        }
+
+    /** Engines that can still be added, in the order the dropdown lists them. */
+    val addableEngines: List<Provider> get() = if (activeEngines.size >= MAX_ENGINES) emptyList() else Provider.entries - activeEngines.toSet()
+
     fun keyFor(provider: Provider) = keys[provider].orEmpty()
 
     fun modelFor(provider: Provider) = models[provider].orEmpty()
@@ -65,6 +80,11 @@ data class AiSettings(
         get() = if (!fallback) {
             null
         } else {
-            fallbackProvider?.takeIf { it != primary && isReady(it) } ?: Provider.entries.firstOrNull { it != primary && isReady(it) }
+            fallbackProvider?.takeIf { it != primary && it in activeEngines && isReady(it) }
+                ?: activeEngines.firstOrNull { it != primary && isReady(it) }
         }
+
+    companion object {
+        const val MAX_ENGINES = 4
+    }
 }

@@ -99,6 +99,31 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
 
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
 
+    /** Adds the next engine that isn't in the list yet (up to four). Keys are left alone. */
+    fun addEngine() = viewModelScope.launch {
+        val ai = state.value.ai
+        val next = ai.addableEngines.firstOrNull() ?: return@launch
+        app.settings.setEngines(ai.activeEngines + next)
+    }
+
+    /** Picking another service in an engine's dropdown. The old service's saved key stays stored. */
+    fun changeEngine(old: Provider, new: Provider) = viewModelScope.launch {
+        val ai = state.value.ai
+        if (new == old || new in ai.activeEngines) return@launch
+        // Primary first, so the list never briefly shows the old engine again.
+        if (ai.primary == old) app.settings.setPrimary(new)
+        app.settings.setEngines(ai.activeEngines.map { if (it == old) new else it })
+    }
+
+    /** Takes an engine off the list and deletes its saved key from this phone. */
+    fun removeEngine(provider: Provider) = viewModelScope.launch {
+        val ai = state.value.ai
+        val remaining = ai.activeEngines - provider
+        if (remaining.isEmpty()) return@launch
+        if (ai.primary == provider) app.settings.setPrimary(remaining.first())
+        app.settings.setEngines(remaining)
+        app.settings.setKey(provider, "")
+    }
     fun setModel(provider: Provider, model: String) = viewModelScope.launch { app.settings.setModel(provider, model) }
 
     fun setFallback(enabled: Boolean) = viewModelScope.launch { app.settings.setFallback(enabled) }

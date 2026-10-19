@@ -34,6 +34,7 @@ class SettingsRepository(context: Context) {
     private val fallbackKey = booleanPreferencesKey("ai_fallback")
     private val fallbackProviderKey = stringPreferencesKey("ai_fallback_provider")
     private val customUrlKey = stringPreferencesKey("custom_base_url")
+    private val enginesKey = stringPreferencesKey("ai_engines")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
     private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
 
@@ -62,6 +63,7 @@ class SettingsRepository(context: Context) {
             customBaseUrl = prefs[customUrlKey].orEmpty(),
             fallback = prefs[fallbackKey] ?: false,
             fallbackProvider = Provider.entries.firstOrNull { it.name == prefs[fallbackProviderKey] },
+            engines = prefs[enginesKey].orEmpty().split(',').mapNotNull { name -> Provider.entries.firstOrNull { it.name == name } },
         )
     }
 
@@ -126,6 +128,11 @@ class SettingsRepository(context: Context) {
 
     suspend fun setScaleEnabled(enabled: Boolean) {
         store.edit { it[scaleKey] = enabled }
+    }
+
+    /** Only the list of engines shown; saved keys are never touched here. */
+    suspend fun setEngines(engines: List<Provider>) {
+        store.edit { it[enginesKey] = engines.distinct().joinToString(",") { p -> p.name } }
     }
 
     suspend fun setPrimary(provider: Provider) {

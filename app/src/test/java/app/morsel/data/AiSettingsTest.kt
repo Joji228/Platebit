@@ -51,4 +51,31 @@ class AiSettingsTest {
         assertEquals("deepseek", Provider.DEEPSEEK.prefix)
         assertEquals("gemini", Provider.GEMINI.prefix)
     }
+
+    @Test
+    fun beforeTheListIsEditedEnginesWithKeysAreShown() {
+        // A phone updated from an older version: only DeepSeek has a key.
+        val ai = AiSettings(primary = Provider.DEEPSEEK, keys = mapOf(Provider.DEEPSEEK to "ds-key"))
+        assertEquals(listOf(Provider.DEEPSEEK), ai.activeEngines)
+        // A fresh install with no keys still shows the engine used for scans.
+        assertEquals(listOf(Provider.DEEPSEEK), AiSettings().activeEngines)
+    }
+
+    @Test
+    fun theEngineUsedForScansIsAlwaysListedAndTheListStopsAtFour() {
+        val ai = AiSettings(primary = Provider.ANTHROPIC, engines = listOf(Provider.DEEPSEEK, Provider.GEMINI))
+        assertEquals(listOf(Provider.ANTHROPIC, Provider.DEEPSEEK, Provider.GEMINI), ai.activeEngines)
+        val full = AiSettings(engines = listOf(Provider.DEEPSEEK, Provider.GEMINI, Provider.OPENAI, Provider.ANTHROPIC))
+        assertEquals(AiSettings.MAX_ENGINES, full.activeEngines.size)
+        assertTrue(full.addableEngines.isEmpty())
+        assertEquals(listOf(Provider.CUSTOM), full.copy(engines = full.engines.take(3)).addableEngines.takeLast(1))
+    }
+
+    @Test
+    fun backupOnlyComesFromAddedEngines() {
+        val ai = AiSettings(primary = Provider.DEEPSEEK, keys = keys, fallback = true, engines = listOf(Provider.DEEPSEEK, Provider.OPENAI))
+        // Gemini has a key but isn't on the list, so OpenAI is the backup.
+        assertEquals(Provider.OPENAI, ai.fallbackTarget)
+        assertEquals(Provider.OPENAI, ai.copy(fallbackProvider = Provider.GEMINI).fallbackTarget)
+    }
 }

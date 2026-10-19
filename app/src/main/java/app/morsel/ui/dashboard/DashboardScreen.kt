@@ -31,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -117,7 +118,7 @@ import kotlin.math.abs
 /**
  * Sideways day switching. The page follows the finger; on release it either slides away and the
  * neighbouring day slides in from the other side, or springs back. Swiping right goes to the
- * earlier day, left to the later one, which stops at today with a rubber-band tug.
+ * earlier day, left to the later one. On today, swiping left moves on to the Scan tab instead.
  */
 @Stable
 private class DaySwipe(
@@ -125,6 +126,8 @@ private class DaySwipe(
     private val listState: LazyListState,
     private val earlier: () -> Unit,
     private val later: () -> Unit,
+    /** Swiping left on today: hands over to the Scan tab. */
+    private val pastToday: () -> Unit,
 ) {
     var offset by mutableFloatStateOf(0f)
     var width by mutableFloatStateOf(1f)
@@ -133,9 +136,7 @@ private class DaySwipe(
 
     fun drag(delta: Float) {
         if (busy) return
-        val next = offset + delta
-        // Past today there is nothing to show, so pulling further feels heavy.
-        offset = if (next < 0f && !canGoNext) offset + delta * 0.3f else next
+        offset += delta
     }
 
     fun release(velocity: Float) {
@@ -143,7 +144,7 @@ private class DaySwipe(
         val far = width * 0.25f
         when {
             offset > far || velocity > FLING -> go(-1)
-            (offset < -far || velocity < -FLING) && canGoNext -> go(1)
+            offset < -far || velocity < -FLING -> if (canGoNext) go(1) else toScan()
             else -> settle()
         }
     }
@@ -159,6 +160,20 @@ private class DaySwipe(
             if (direction < 0) earlier() else later()
             listState.scrollToItem(0)
             animate(-exit, 0f, animationSpec = tween(230, easing = FastOutSlowInEasing)) { v, _ -> offset = v }
+            busy = false
+        }
+    }
+
+    /**
+     * The page keeps its offset while the tab transition slides it out the same way. If the switch
+     * doesn't happen for some reason, it springs back after a moment instead of staying stuck.
+     */
+    private fun toScan() {
+        busy = true
+        pastToday()
+        scope.launch {
+            delay(600)
+            animate(offset, 0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) { v, _ -> offset = v }
             busy = false
         }
     }
@@ -192,7 +207,7 @@ fun DashboardScreen(
 
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay) }
+    val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay, pastToday = onScan) }
     swipe.canGoNext = state.date < state.today
 
     Box(

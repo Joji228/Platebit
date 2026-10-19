@@ -56,6 +56,15 @@ import app.morsel.data.Provider
 import app.morsel.ui.components.GroupedList
 import app.morsel.ui.components.ListRow
 import app.morsel.ui.components.RoundIconButton
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import app.morsel.ui.components.SecondaryButton
 
 /**
  * Where the user picks which AI reads their meal photos and enters their own API key for it.
@@ -70,6 +79,7 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     var keyDialog by remember { mutableStateOf<Provider?>(null) }
     var modelDialog by remember { mutableStateOf<Provider?>(null) }
     var backupPicker by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<Provider?>(null) }
 
     Column(
         Modifier
@@ -102,32 +112,60 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
             }
 
-            item { GroupLabel("Use for scans") }
+            item { GroupLabel("Your engines") }
             item {
+                Text(
+                    "Pick a service in each engine's menu. The ticked engine reads your photos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
+            items(ai.activeEngines, key = { it.name }) { provider ->
                 GroupedList(
-                    rows = Provider.entries.map { provider ->
+                    rows = listOf(
                         {
-                            EngineRow(
+                            EngineHeader(
                                 provider = provider,
-                                selected = provider == ai.primary,
                                 ai = ai,
-                                onClick = { viewModel.setPrimary(provider) },
+                                onUse = { viewModel.setPrimary(provider) },
+                                onChange = { viewModel.changeEngine(provider, it) },
+                                onRemove = if (ai.activeEngines.size > 1) ({ removing = provider }) else null,
                             )
-                        }
-                    },
+                        },
+                        { KeyRow(provider, ai, onClick = { keyDialog = provider }) },
+                        { ModelRow(provider, ai, onClick = { modelDialog = provider }) },
+                    ),
                 )
             }
             if (!ai.isReady(ai.primary)) {
                 item {
                     Text(
-                        "${ai.primary.title} has no API key yet. Add one below to start scanning.",
+                        "${ai.primary.title} has no API key yet. Add one to start scanning.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 }
             }
-
+            item {
+                if (ai.addableEngines.isNotEmpty()) {
+                    SecondaryButton(
+                        "Add engine",
+                        viewModel::addEngine,
+                        Modifier.fillMaxWidth(),
+                        icon = Icons.Rounded.Add,
+                        accent = true,
+                    )
+                } else {
+                    Text(
+                        "You can set up to ${AiSettings.MAX_ENGINES} engines.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
+            }
             item { GroupLabel("Backup engine") }
             item {
                 GroupedList(
@@ -157,17 +195,6 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
             }
 
-            Provider.entries.forEach { provider ->
-                item { GroupLabel(listOfNotNull(provider.title, provider.byline).joinToString(" · ")) }
-                item {
-                    GroupedList(
-                        rows = listOf(
-                            { KeyRow(provider, ai, onClick = { keyDialog = provider }) },
-                            { ModelRow(provider, ai, onClick = { modelDialog = provider }) },
-                        ),
-                    )
-                }
-            }
         }
     }
 
@@ -204,28 +231,96 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             onDismiss = { backupPicker = false },
         )
     }
+    removing?.let { provider ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Remove ${provider.title}?") },
+            text = {
+                Text(
+                    "Its saved API key is deleted from this phone." +
+                        if (provider == ai.primary) " Scans will use ${(ai.activeEngines - provider).first().title} instead." else "",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.removeEngine(provider)
+                    removing = null
+                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
 }
 
+/** Top row of an engine card: tick to use it for scans, its service menu, and Remove. */
 @Composable
-private fun EngineRow(provider: Provider, selected: Boolean, ai: AiSettings, onClick: () -> Unit) {
-    val status = if (ai.isReady(provider)) {
-        ai.modelFor(provider).ifBlank { if (provider == Provider.CUSTOM) "choose a model" else "automatic model" }
-    } else {
-        "no key yet"
-    }
-    val detail = listOfNotNull(provider.byline, status).joinToString(" · ")
+private fun EngineHeader(
+    provider: Provider,
+    ai: AiSettings,
+    onUse: () -> Unit,
+    onChange: (Provider) -> Unit,
+    onRemove: (() -> Unit)?,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(provider.title, style = MaterialTheme.typography.bodyLarge)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        RadioButton(selected = provider == ai.primary, onClick = onUse)
+        Box(Modifier.weight(1f)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { menuOpen = true }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(provider.title, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (provider == ai.primary) "Used for scans" else (provider.byline ?: "Tap the circle to use for scans"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (provider == ai.primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(Icons.Rounded.ExpandMore, "Choose service", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Provider.entries.forEach { option ->
+                    val taken = option != provider && option in ai.activeEngines
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(option.title, style = MaterialTheme.typography.bodyLarge)
+                                (if (taken) "Already added" else option.byline)?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        },
+                        trailingIcon = if (option == provider) ({ Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
+                        enabled = !taken,
+                        onClick = {
+                            menuOpen = false
+                            onChange(option)
+                        },
+                    )
+                }
+            }
         }
-        RadioButton(selected = selected, onClick = null)
+        if (onRemove != null) {
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Rounded.DeleteOutline, "Remove ${provider.title}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -421,7 +516,7 @@ private fun ModelOption(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Lists the other engines; ones without a key can't be chosen yet. */
+/** Lists the other added engines; ones without a key can't be chosen yet. */
 @Composable
 private fun BackupPicker(ai: AiSettings, onPick: (Provider) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
@@ -430,7 +525,7 @@ private fun BackupPicker(ai: AiSettings, onPick: (Provider) -> Unit, onDismiss: 
         title = { Text("Backup engine") },
         text = {
             Column {
-                Provider.entries.filter { it != ai.primary }.forEach { provider ->
+                ai.activeEngines.filter { it != ai.primary }.forEach { provider ->
                     val ready = ai.isReady(provider)
                     Row(
                         Modifier
