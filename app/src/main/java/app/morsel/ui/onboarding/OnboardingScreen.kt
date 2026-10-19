@@ -128,9 +128,9 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, backup: CloudBackup, onDone
             },
             onClick = { if (state.step == Step.PLAN) viewModel.finish(onDone) else viewModel.next() },
             enabled = state.loaded,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (state.step == Step.WELCOME) 0.dp else 16.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (state.step == Step.WELCOME && CloudBackup.AVAILABLE) 0.dp else 16.dp),
         )
-        if (state.step == Step.WELCOME) {
+        if (state.step == Step.WELCOME && CloudBackup.AVAILABLE) {
             // Setting up a new phone: bring everything back from Google Drive instead.
             RestoreFromDriveButton(
                 backup,

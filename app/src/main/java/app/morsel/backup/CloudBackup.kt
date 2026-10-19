@@ -422,6 +422,13 @@ class CloudBackup(
     private class NeedsReconnectException : Exception("Sign in to Google again")
 
     companion object {
+        /**
+         * Switched off for now: Google only accepts sign-in from an app registered in a Google Cloud
+         * project (package name + signing key), which isn't set up yet. Everything else is built and
+         * tested; set this to true once the project exists to turn the Drive backup on.
+         */
+        const val AVAILABLE = false
+
         private const val SOON = "backup-soon"
         private const val DAILY = "backup-daily"
     }

@@ -349,8 +349,7 @@ fun SettingsScreen(
             item {
                 Text(
                     "Platebit ${context.packageManager.getPackageInfo(context.packageName, 0).versionName} · " +
-                        "Your data stays on this phone, plus your own Google Drive if you turn on backup. " +
-                        "Photos are sent only to the AI provider you choose.",
+                        "Your data stays on this phone. Photos are sent only to the AI provider you choose.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp),

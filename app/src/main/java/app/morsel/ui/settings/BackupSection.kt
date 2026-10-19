@@ -189,7 +189,19 @@ fun BackupSection(backup: CloudBackup, onMessage: (String) -> Unit) {
     }
 
     val account = status.account
-    val rows: List<@Composable () -> Unit> = if (account == null) {
+    val rows: List<@Composable () -> Unit> = if (!CloudBackup.AVAILABLE && account == null) {
+        listOf(
+            {
+                ListRow(
+                    "Back up to Google Drive",
+                    subtitle = "Coming in a later version",
+                    icon = Icons.Rounded.CloudUpload,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    enabled = false,
+                )
+            },
+        )
+    } else if (account == null) {
         listOf(
             {
                 ListRow(
