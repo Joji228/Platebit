@@ -123,10 +123,16 @@ fun rememberGoogleSignIn(
 /** Null when there's nothing to tell (the user cancelled). */
 internal fun describeSignInError(e: Throwable): String? = when {
     e is ApiException && e.statusCode == CommonStatusCodes.CANCELED -> null
-    e is ApiException && e.statusCode == CommonStatusCodes.DEVELOPER_ERROR ->
+    e is ApiException && (
+        e.statusCode == CommonStatusCodes.DEVELOPER_ERROR ||
+            // Play services reports an unregistered app as an internal error (8) with this status in the message.
+            (e.statusCode == CommonStatusCodes.INTERNAL_ERROR && e.message.orEmpty().contains("UNREGISTERED"))
+    ) ->
         "Google sign-in isn't set up for this copy of Platebit. Its Google Cloud project needs an Android client " +
             "with this app's package name and signing fingerprint."
     e is ApiException && e.statusCode == CommonStatusCodes.NETWORK_ERROR -> "No internet connection. Try again when you're online."
+    e is ApiException && e.statusCode == CommonStatusCodes.INTERNAL_ERROR ->
+        "Google sign-in failed. If this keeps happening, this copy of Platebit may not be registered with Google yet."
     e is ApiException -> "Google sign-in failed (code ${e.statusCode})."
     e is IOException -> e.message ?: "No internet connection."
     else -> e.message ?: "Google sign-in failed."
