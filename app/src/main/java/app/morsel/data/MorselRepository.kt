@@ -6,6 +6,7 @@ import app.morsel.data.db.MealEntity
 import app.morsel.data.db.MorselDatabase
 import app.morsel.data.db.WaterEntity
 import app.morsel.data.db.WeightEntity
+import app.morsel.domain.BodyComposition
 import app.morsel.domain.UserProfile
 import kotlinx.serialization.Serializable
 import java.io.File
@@ -92,6 +93,21 @@ class MorselRepository(private val db: MorselDatabase) {
 
     suspend fun logWeight(kg: Double) = db.weights().insert(
         WeightEntity(date = LocalDate.now().toString(), timestamp = System.currentTimeMillis(), kg = kg),
+    )
+
+    /** A weigh-in from the smart scale; [composition] is null when it was weighed without impedance. */
+    suspend fun logScaleWeighIn(kg: Double, impedance: Int?, composition: BodyComposition?) = db.weights().insert(
+        WeightEntity(
+            date = LocalDate.now().toString(),
+            timestamp = System.currentTimeMillis(),
+            kg = kg,
+            impedance = impedance,
+            fatPct = composition?.fatPct,
+            waterPct = composition?.waterPct,
+            muscleKg = composition?.muscleKg,
+            boneKg = composition?.boneKg,
+            leanKg = composition?.leanKg,
+        ),
     )
 
     suspend fun export(profile: UserProfile?) = Backup(

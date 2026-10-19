@@ -6,6 +6,7 @@ import app.morsel.AppContainer
 import app.morsel.data.PlanState
 import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
+import app.morsel.domain.BodyCompositionCalc
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -74,6 +75,18 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
 
     fun logWeight(kg: Double) {
         viewModelScope.launch { app.repository.logWeight(kg) }
+    }
+
+    val scale get() = app.scale
+
+    /** Live frames from the smart scale for as long as the weigh-in dialog is open. */
+    fun scaleReadings() = app.scale.readings()
+
+    /** Saves a smart-scale weigh-in; body composition is worked out here from the profile. */
+    fun logScaleWeighIn(kg: Double, impedance: Int?) {
+        val profile = state.value.profile
+        val composition = profile?.let { BodyCompositionCalc.compute(kg, impedance, it) }
+        viewModelScope.launch { app.repository.logScaleWeighIn(kg, impedance, composition) }
     }
 
     /** Removes a meal and its photo. */

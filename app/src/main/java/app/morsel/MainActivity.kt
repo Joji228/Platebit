@@ -73,6 +73,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import app.morsel.data.ThemeMode
 import app.morsel.ui.theme.AccentColor
+import app.morsel.ui.body.BodyScreen
+import app.morsel.ui.body.BodyViewModel
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
 import app.morsel.ui.onboarding.OnboardingScreen
@@ -94,6 +96,7 @@ import kotlinx.serialization.Serializable
 @Serializable object SettingsRoute
 @Serializable object AiSettingsRoute
 @Serializable data class OnboardingRoute(val edit: Boolean = false)
+@Serializable object BodyRoute
 
 class MainActivity : ComponentActivity() {
     private var ready = false
@@ -200,7 +203,14 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                         onScan = { nav.switchTab(ScanRoute) },
                         onOpenMeal = { nav.navigate(ResultRoute(it)) },
                         onSettings = { nav.navigate(SettingsRoute) },
+                        onOpenBody = { nav.navigate(BodyRoute) },
                     )
+                }
+            }
+            composable<BodyRoute> {
+                Screen {
+                    val vm = viewModel { BodyViewModel(container) }
+                    BodyScreen(vm, onBack = { nav.popBackStack() })
                 }
             }
             composable<ScanRoute> {

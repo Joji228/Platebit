@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import app.morsel.ai.AiService
 import app.morsel.ai.AnalysisResult
+import app.morsel.ble.MiScaleScanner
 import app.morsel.data.DayClock
 import app.morsel.data.MorselRepository
 import app.morsel.data.PhotoStore
@@ -47,6 +48,7 @@ class AppContainer(context: Context) {
     val photos = PhotoStore(context)
     val storage = StorageInfo(context)
     val ai = AiService(settings)
+    val scale = MiScaleScanner(context)
     var draft: MealDraft? = null
 
     /** The day the dashboard is showing. Water taps go to it; scanned meals always go to today. */

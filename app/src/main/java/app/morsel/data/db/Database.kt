@@ -14,6 +14,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import app.morsel.domain.Macros
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
@@ -77,7 +78,17 @@ data class WeightEntity(
     val date: String,
     val timestamp: Long,
     val kg: Double,
-)
+    // Set when the weigh-in came from the smart scale. Only the raw impedance and the estimates
+    // made from it are kept; all of them are null for a manual entry.
+    val impedance: Int? = null,
+    val fatPct: Double? = null,
+    val waterPct: Double? = null,
+    val muscleKg: Double? = null,
+    val boneKg: Double? = null,
+    val leanKg: Double? = null,
+) {
+    val hasComposition get() = fatPct != null
+}
 
 fun FoodItemEntity.macros() =
     Macros(kcalPer100, proteinPer100, carbsPer100, fatPer100) * (grams / 100.0)
@@ -208,8 +219,18 @@ abstract class MorselDatabase : RoomDatabase() {
          * There is deliberately no destructive fallback: a missing migration crashes in testing
          * instead of silently wiping a real user's history.
          */
-        const val VERSION = 1
+        const val VERSION = 2
 
-        val MIGRATIONS: Array<Migration> = arrayOf()
+        /** 1 -> 2: smart-scale body composition on weigh-ins. Existing rows just get empty columns. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE weights ADD COLUMN impedance INTEGER")
+                for (column in listOf("fatPct", "waterPct", "muscleKg", "boneKg", "leanKg")) {
+                    db.execSQL("ALTER TABLE weights ADD COLUMN $column REAL")
+                }
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
     }
 }

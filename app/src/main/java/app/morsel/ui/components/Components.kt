@@ -233,13 +233,20 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 }
 
 @Composable
-fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun SecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    /** Tinted with the accent colour instead of neutral grey. */
+    accent: Boolean = false,
+) {
     Surface(
         onClick = onClick,
         modifier = modifier.height(40.dp),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = if (accent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (accent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp),
@@ -250,7 +257,7 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
                 Icon(icon, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(text, style = MaterialTheme.typography.labelLarge)
+            Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
         }
     }
 }

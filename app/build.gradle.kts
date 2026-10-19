@@ -17,8 +17,8 @@ android {
         targetSdk = 36
         // versionCode only ever goes up (Android refuses to install a lower one over the app
         // already on the phone without wiping its data); versionName is what the user sees.
-        versionCode = 7
-        versionName = "0.2.0"
+        versionCode = 8
+        versionName = "1.0.0"
     }
 
     // Release signing comes from keystore.properties in the project root, which is git-ignored

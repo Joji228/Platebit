@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.foundation.layout.heightIn
 import app.morsel.data.db.WeightEntity
 import java.time.Instant
@@ -91,6 +92,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
 import app.morsel.domain.MealType
+import app.morsel.domain.UserProfile
 import app.morsel.ui.components.MacroStat
 import app.morsel.ui.components.MorselCard
 import app.morsel.ui.components.NumberStepper
@@ -180,10 +182,12 @@ fun DashboardScreen(
     onScan: () -> Unit,
     onOpenMeal: (Long) -> Unit,
     onSettings: () -> Unit,
+    onOpenBody: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showWeightDialog by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showScale by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -234,7 +238,15 @@ fun DashboardScreen(
                     onUndo = viewModel::undoWater,
                 )
             }
-            item { WeightCard(state, onLog = { showWeightDialog = true }, onHistory = { showHistory = true }) }
+            item {
+                WeightCard(
+                    state,
+                    onLog = { showWeightDialog = true },
+                    onHistory = { showHistory = true },
+                    onScale = { showScale = true },
+                    onOpen = onOpenBody,
+                )
+            }
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Meals", trailing = "${state.eaten.kcal.format()} kcal")
@@ -283,8 +295,23 @@ fun DashboardScreen(
     if (showHistory) {
         WeightHistoryDialog(
             weighIns = state.plan.weighIns,
+            profile = state.profile,
             onDelete = viewModel::deleteWeight,
             onDismiss = { showHistory = false },
+        )
+    }
+    if (showScale) {
+        ScaleDialog(
+            profile = state.profile,
+            scale = viewModel.scale,
+            readings = viewModel::scaleReadings,
+            onDismiss = { showScale = false },
+            onSave = { kg, impedance ->
+                viewModel.logScaleWeighIn(kg, impedance)
+                showScale = false
+                // Straight to the analysis of the weigh-in that was just taken.
+                onOpenBody()
+            },
         )
     }
     if (showWeightDialog) {
@@ -451,7 +478,7 @@ private fun WaterCard(ml: Int, goalMl: Int, onAdd: () -> Unit, onUndo: () -> Uni
 }
 
 @Composable
-private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -> Unit) {
+private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -> Unit, onScale: () -> Unit, onOpen: () -> Unit) {
     val profile = state.profile ?: return
     val current = state.currentWeight ?: profile.startWeightKg
     val change = current - profile.startWeightKg
@@ -474,7 +501,8 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
         trend.forEach { add(it.date.toEpochDay().toDouble() to it.trend) }
     }
     val readings = trend.map { it.date.toEpochDay().toDouble() to it.raw }
-    MorselCard {
+    // Tapping anywhere outside the buttons opens the Body screen with the full analysis.
+    MorselCard(onClick = onOpen) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Weight", style = MaterialTheme.typography.titleMedium)
             if (abs(change) >= 0.05) {
@@ -487,10 +515,14 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
             Spacer(Modifier.weight(1f))
             if (state.plan.weighIns.isNotEmpty()) {
                 RoundIconButton(Icons.Rounded.History, "Weigh-in history", onHistory, size = 40.dp)
-                Spacer(Modifier.width(8.dp))
             }
-            // Kept in the header so the floating camera button never covers it.
-            SecondaryButton("Log", onLog, icon = Icons.Rounded.Add)
+        }
+        // Their own row under the title, so neither button is squeezed narrow enough to wrap its label.
+        // Kept above the chart so the floating camera button never covers them.
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryButton("Weigh in", onScale, Modifier.weight(1f), icon = Icons.Rounded.MonitorWeight, accent = true)
+            SecondaryButton("Log", onLog, Modifier.weight(1f), icon = Icons.Rounded.Add)
         }
         Spacer(Modifier.height(14.dp))
         Box(contentAlignment = Alignment.Center) {
@@ -527,11 +559,21 @@ private fun WeightCard(state: DashboardState, onLog: () -> Unit, onHistory: () -
             WeightStat("Trend", current, Modifier.weight(1f), highlight = true)
             WeightStat("Goal", profile.goalWeightKg, Modifier.weight(1f))
         }
+        // The latest weigh-in that came from the smart scale carries body composition.
+        state.plan.weighIns.lastOrNull { it.impedance != null }?.compositionLine(profile)?.let { line ->
+            Spacer(Modifier.height(14.dp))
+            Text(line, style = MaterialTheme.typography.bodySmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurface)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("BMI, body composition and trends", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
 @Composable
-private fun WeightHistoryDialog(weighIns: List<WeightEntity>, onDelete: (Long) -> Unit, onDismiss: () -> Unit) {
+private fun WeightHistoryDialog(weighIns: List<WeightEntity>, profile: UserProfile?, onDelete: (Long) -> Unit, onDismiss: () -> Unit) {
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, MMM d · HH:mm", Locale.getDefault()) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -560,6 +602,9 @@ private fun WeightHistoryDialog(weighIns: List<WeightEntity>, onDelete: (Long) -
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                                entry.compositionLine(profile)?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                             IconButton(onClick = { onDelete(entry.id) }) {
                                 Icon(Icons.Rounded.DeleteOutline, "Delete reading", tint = MaterialTheme.colorScheme.onSurfaceVariant)

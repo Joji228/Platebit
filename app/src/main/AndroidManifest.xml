@@ -3,8 +3,14 @@
 
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Reads the smart scale's Bluetooth broadcasts. It never locates the phone. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
 
     <application
         android:name=".MorselApp"
