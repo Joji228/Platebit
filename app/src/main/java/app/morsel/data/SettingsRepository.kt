@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.morsel.domain.UserProfile
+import app.morsel.ui.theme.AccentColor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
@@ -27,6 +28,7 @@ class SettingsRepository(context: Context) {
 
     private val profileKey = stringPreferencesKey("profile")
     private val themeKey = stringPreferencesKey("theme")
+    private val accentKey = stringPreferencesKey("accent")
     private val primaryKey = stringPreferencesKey("ai_primary")
     private val fallbackKey = booleanPreferencesKey("ai_fallback")
     private val fallbackProviderKey = stringPreferencesKey("ai_fallback_provider")
@@ -45,6 +47,8 @@ class SettingsRepository(context: Context) {
     val theme: Flow<ThemeMode> = store.data.map { prefs ->
         ThemeMode.entries.firstOrNull { it.name == prefs[themeKey] } ?: ThemeMode.DARK
     }
+
+    val accent: Flow<AccentColor> = store.data.map { prefs -> AccentColor.fromName(prefs[accentKey]) }
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
@@ -110,6 +114,10 @@ class SettingsRepository(context: Context) {
 
     suspend fun setTheme(mode: ThemeMode) {
         store.edit { it[themeKey] = mode.name }
+    }
+
+    suspend fun setAccent(accent: AccentColor) {
+        store.edit { it[accentKey] = accent.name }
     }
 
     suspend fun setPrimary(provider: Provider) {

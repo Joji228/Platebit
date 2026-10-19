@@ -72,6 +72,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import app.morsel.data.ThemeMode
+import app.morsel.ui.theme.AccentColor
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
 import app.morsel.ui.onboarding.OnboardingScreen
@@ -110,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode by container.settings.theme.collectAsStateWithLifecycle(initialValue = ThemeMode.DARK)
+            val accent by container.settings.accent.collectAsStateWithLifecycle(initialValue = AccentColor.Default)
             val dark = when (themeMode) {
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false
@@ -127,10 +129,12 @@ class MainActivity : ComponentActivity() {
             var start by remember { mutableStateOf<Any?>(null) }
             LaunchedEffect(Unit) {
                 start = if (container.settings.profile.first() == null) OnboardingRoute() else TodayRoute
+                // Let the saved accent land before the splash goes away, so it never flashes lime first.
+                container.settings.accent.first()
                 ready = true
             }
 
-            MorselTheme(dark = dark) {
+            MorselTheme(dark = dark, accent = accent) {
                 Box(
                     Modifier
                         .fillMaxSize()

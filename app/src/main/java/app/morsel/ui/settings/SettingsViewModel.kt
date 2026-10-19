@@ -1,4 +1,4 @@
-﻿package app.morsel.ui.settings
+package app.morsel.ui.settings
 
 import android.content.Context
 import android.net.Uri
@@ -14,6 +14,7 @@ import app.morsel.data.ThemeMode
 import app.morsel.domain.AdaptiveEstimate
 import app.morsel.domain.Targets
 import app.morsel.domain.UserProfile
+import app.morsel.ui.theme.AccentColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,7 @@ data class SettingsState(
     val estimate: AdaptiveEstimate? = null,
     val ai: AiSettings = AiSettings(),
     val theme: ThemeMode = ThemeMode.DARK,
+    val accent: AccentColor = AccentColor.Default,
 )
 
 sealed interface KeyCheck {
@@ -49,8 +51,9 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         app.plans.plan,
         app.settings.ai,
         app.settings.theme,
-    ) { plan, ai, theme ->
-        SettingsState(profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme)
+        app.settings.accent,
+    ) { plan, ai, theme, accent ->
+        SettingsState(profile = plan.profile, targets = plan.targets, estimate = plan.estimate, ai = ai, theme = theme, accent = accent)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
     /** Size and count of stored meal photos, e.g. "3.2 MB" and 41. */
@@ -84,6 +87,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     val message = MutableStateFlow<String?>(null)
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { app.settings.setTheme(mode) }
+
+    fun setAccent(accent: AccentColor) = viewModelScope.launch { app.settings.setAccent(accent) }
 
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
 

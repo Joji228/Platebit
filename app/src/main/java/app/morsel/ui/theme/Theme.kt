@@ -5,6 +5,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -15,9 +16,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.morsel.R
 
-/** Nutrient colors stay the same in both themes so charts read consistently. */
+/** Nutrient colors stay the same in both themes so charts read consistently. Calories follow the accent color. */
 object Nutrient {
-    val Calories = Color(0xFFC5F25A)
     val Protein = Color(0xFFFF7A59)
     val Carbs = Color(0xFFFFC542)
     val Fat = Color(0xFFB48CFF)
@@ -107,9 +107,16 @@ private val MorselTypography = Typography().run {
 }
 
 @Composable
-fun MorselTheme(dark: Boolean, content: @Composable () -> Unit) {
+fun MorselTheme(dark: Boolean, accent: AccentColor = AccentColor.Default, content: @Composable () -> Unit) {
+    val colors = remember(dark, accent) {
+        if (dark) {
+            DarkColors.copy(primary = accent.dark, primaryContainer = accent.darkContainer, onPrimaryContainer = accent.dark)
+        } else {
+            LightColors.copy(primary = accent.light, primaryContainer = accent.lightContainer, onPrimaryContainer = accent.onLightContainer)
+        }
+    }
     MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
+        colorScheme = colors,
         typography = MorselTypography,
         content = content,
     )

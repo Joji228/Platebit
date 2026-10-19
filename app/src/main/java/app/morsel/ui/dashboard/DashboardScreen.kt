@@ -377,7 +377,7 @@ private fun CaloriesCard(state: DashboardState) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        ProgressLine((eaten / goal).toFloat(), if (over) Nutrient.Protein else Nutrient.Calories, height = 10.dp)
+        ProgressLine((eaten / goal).toFloat(), if (over) Nutrient.Protein else MaterialTheme.colorScheme.primary, height = 10.dp)
         Spacer(Modifier.height(18.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             MacroStat("Protein", state.eaten.protein, state.targets?.protein ?: 0, Nutrient.Protein, Modifier.weight(1f))

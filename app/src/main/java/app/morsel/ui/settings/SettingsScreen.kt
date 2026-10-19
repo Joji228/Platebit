@@ -28,6 +28,9 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -75,6 +78,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.Provider
 import app.morsel.data.ThemeMode
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import app.morsel.ui.theme.AccentColor
 import app.morsel.domain.Sex
 import app.morsel.ui.components.GroupedList
 import app.morsel.ui.components.ListRow
@@ -228,6 +239,9 @@ fun SettingsScreen(
                                 viewModel::setTheme,
                                 Modifier.padding(14.dp),
                             )
+                        },
+                        {
+                            AccentPicker(state.accent, viewModel::setAccent, Modifier.padding(14.dp))
                         },
                     ),
                 )
@@ -518,4 +532,53 @@ internal fun GroupLabel(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 2.dp),
     )
+}
+
+/** Ten bright accent colors in two rows; the chosen one carries a check mark and a ring. */
+@Composable
+private fun AccentPicker(selected: AccentColor, onSelect: (AccentColor) -> Unit, modifier: Modifier = Modifier) {
+    val haptics = LocalHapticFeedback.current
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Accent color", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Text(selected.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        AccentColor.entries.chunked(5).forEach { rowColors ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                rowColors.forEach { accent ->
+                    val isSelected = accent == selected
+                    val color = if (dark) accent.dark else accent.light
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .then(if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                            .padding(5.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .semantics { contentDescription = accent.title }
+                            .selectable(
+                                selected = isSelected,
+                                role = Role.RadioButton,
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelect(accent)
+                                },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                Icons.Rounded.Check,
+                                contentDescription = ", selected",
+                                tint = if (dark) Color(0xFF0A0A0A) else Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
