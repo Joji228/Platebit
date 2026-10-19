@@ -7,6 +7,18 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import app.morsel.ui.components.repeatOnHold
+import app.morsel.ui.components.RepeatIconButton
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -242,7 +254,7 @@ fun DashboardScreen(
                     )
                 }
                 items(meals, key = { it.meal.id }) { meal ->
-                    MealRow(meal, onClick = { onOpenMeal(meal.meal.id) })
+                    MealRow(meal, onClick = { onOpenMeal(meal.meal.id) }, onDelete = { viewModel.deleteMeal(meal.meal.id) })
                 }
             }
         }
@@ -405,23 +417,34 @@ private fun WaterCard(ml: Int, goalMl: Int, onAdd: () -> Unit, onUndo: () -> Uni
                 ProgressLine(ml.toFloat() / goalMl.coerceAtLeast(1), Nutrient.Water, height = 5.dp)
             }
             Spacer(Modifier.width(12.dp))
-            RoundIconButton(Icons.Rounded.Remove, "Undo last water", onUndo, size = 36.dp)
+            // Same press-and-hold behavior as every other +/− in the app, just slower: one step
+            // here is half a litre, so a faster repeat would overshoot in a heartbeat.
+            RepeatIconButton(
+                Icons.Rounded.Remove, "Undo last water", size = 36.dp,
+                firstDelayMs = 500, startIntervalMs = 480, minIntervalMs = 320, onStep = onUndo,
+            )
             Spacer(Modifier.width(8.dp))
-            val haptics = LocalHapticFeedback.current
-            Surface(
-                onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onAdd()
-                },
-                shape = RoundedCornerShape(14.dp),
-                color = Nutrient.Water.copy(alpha = 0.18f),
-                contentColor = Nutrient.Water,
-                modifier = Modifier.height(36.dp),
+            var addPressed by remember { mutableStateOf(false) }
+            val addStep by rememberUpdatedState(onAdd)
+            Row(
+                Modifier
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Nutrient.Water.copy(alpha = if (addPressed) 0.30f else 0.18f))
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Add 500 ml of water"
+                        role = Role.Button
+                        onClick { addStep(); true }
+                    }
+                    .repeatOnHold(
+                        firstDelayMs = 500, startIntervalMs = 480, minIntervalMs = 320,
+                        onPressedChange = { addPressed = it }, onStep = onAdd,
+                    )
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
-                    Text("500 ml", style = MaterialTheme.typography.labelLarge)
-                }
+                Icon(Icons.Rounded.Add, null, Modifier.size(16.dp), tint = Nutrient.Water)
+                Text("500 ml", style = MaterialTheme.typography.labelLarge, color = Nutrient.Water)
             }
         }
     }
@@ -562,52 +585,83 @@ private fun WeightStat(label: String, kg: Double, modifier: Modifier, highlight:
     }
 }
 
+/** A logged meal. Tap to edit it; press and hold for a small menu with Delete. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MealRow(meal: MealWithItems, onClick: () -> Unit) {
+private fun MealRow(meal: MealWithItems, onClick: () -> Unit, onDelete: () -> Unit) {
     val macros = meal.macros()
-    MorselCard(onClick = onClick, padding = 12.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                contentAlignment = Alignment.Center,
-            ) {
-                val photo = meal.meal.photoPath
-                if (photo != null) {
-                    var viewing by remember { mutableStateOf(false) }
-                    AsyncImage(
-                        model = File(photo),
-                        contentDescription = "Meal photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable { viewing = true },
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        MorselCard(onClick = onClick, onLongClick = { menuOpen = true }, padding = 12.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val photo = meal.meal.photoPath
+                    if (photo != null) {
+                        var viewing by remember { mutableStateOf(false) }
+                        val haptics = LocalHapticFeedback.current
+                        AsyncImage(
+                            model = File(photo),
+                            contentDescription = "Meal photo",
+                            contentScale = ContentScale.Crop,
+                            // Holding the thumbnail opens the same menu as holding the rest of the row.
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .combinedClickable(
+                                    onClick = { viewing = true },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        menuOpen = true
+                                    },
+                                ),
+                        )
+                        if (viewing) PhotoViewer(File(photo), onDismiss = { viewing = false })
+                    } else {
+                        Icon(Icons.Rounded.Restaurant, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        meal.meal.name.ifBlank { "Meal" },
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    if (viewing) PhotoViewer(File(photo), onDismiss = { viewing = false })
-                } else {
-                    Icon(Icons.Rounded.Restaurant, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(3.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MacroTag("P", macros.protein, Nutrient.Protein)
+                        MacroTag("C", macros.carbs, Nutrient.Carbs)
+                        MacroTag("F", macros.fat, Nutrient.Fat)
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(macros.kcal.format(), style = MaterialTheme.typography.titleMedium.merge(Numeric))
+                    Text("kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    meal.meal.name.ifBlank { "Meal" },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        }
+        // The menu opens from the card's lower right corner, under the finger's usual resting place.
+        Box(Modifier.align(Alignment.BottomEnd).padding(end = 12.dp)) {
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Delete meal", color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
+                    },
                 )
-                Spacer(Modifier.height(3.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MacroTag("P", macros.protein, Nutrient.Protein)
-                    MacroTag("C", macros.carbs, Nutrient.Carbs)
-                    MacroTag("F", macros.fat, Nutrient.Fat)
-                }
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(macros.kcal.format(), style = MaterialTheme.typography.titleMedium.merge(Numeric))
-                Text("kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

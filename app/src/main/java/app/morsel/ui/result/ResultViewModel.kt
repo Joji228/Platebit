@@ -54,6 +54,11 @@ data class ResultState(
     val totalGrams: Double get() = items.sumOf { it.grams } * multiplier
 }
 
+/** Size of one +/− press on an item's grams. */
+object GramsStep {
+    fun forGrams(grams: Double) = if (grams < 50) 5.0 else 10.0
+}
+
 class ResultViewModel(private val app: AppContainer, private val mealId: Long) : ViewModel() {
     private val _state = MutableStateFlow(ResultState())
     val state: StateFlow<ResultState> = _state
@@ -109,6 +114,16 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
     fun setMultiplier(value: Double) = _state.update { it.copy(multiplier = value) }
 
     fun setGrams(key: Long, grams: Double) = updateItem(key) { it.copy(grams = grams.coerceIn(0.0, 5000.0)) }
+
+    /**
+     * One press of the + or − next to an item's grams: 5 g steps under 50 g, 10 g above.
+     * Applied to the current value inside the state update, so fast repeats while the button
+     * is held can never read a stale amount and skip or double a step.
+     */
+    fun nudgeGrams(key: Long, direction: Int) = updateItem(key) {
+        val step = GramsStep.forGrams(it.grams)
+        it.copy(grams = (it.grams + direction * step).coerceIn(0.0, 5000.0))
+    }
 
     fun rename(key: Long, name: String) = updateItem(key) { it.copy(name = name) }
 

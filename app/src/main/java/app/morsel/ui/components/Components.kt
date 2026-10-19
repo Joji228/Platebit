@@ -30,6 +30,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -98,18 +100,33 @@ fun Double.format(decimals: Int = 0): String =
 
 fun Int.format(): String = String.format(Locale.getDefault(), "%,d", this)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MorselCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     padding: Dp = 18.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clip(CardShape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(
+                when {
+                    onLongClick != null -> Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongClick()
+                        },
+                    )
+                    onClick != null -> Modifier.clickable(onClick = onClick)
+                    else -> Modifier
+                },
+            ),
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = CardShape,
     ) {
@@ -403,15 +420,61 @@ private fun NumberInput(initial: Double, decimals: Int, style: TextStyle, onType
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
 
-/** Round button that steps once on tap and keeps stepping, faster and faster, while held. */
+/**
+ * The one hold-to-repeat behavior every + / − button in the app shares: a press steps once
+ * straight away, and after a short hold it keeps stepping, faster and faster, until you let go.
+ * Each step gives a light tick. [onPressedChange] lets the button show a pressed state.
+ *
+ * Slow things down (for example water, where one step is half a litre) with a bigger
+ * [startIntervalMs] and [minIntervalMs].
+ */
+@Composable
+fun Modifier.repeatOnHold(
+    firstDelayMs: Long = 400,
+    startIntervalMs: Long = 110,
+    minIntervalMs: Long = 35,
+    onPressedChange: (Boolean) -> Unit = {},
+    onStep: () -> Unit,
+): Modifier {
+    val haptics = LocalHapticFeedback.current
+    val step by rememberUpdatedState(onStep)
+    val pressedChanged by rememberUpdatedState(onPressedChange)
+    return pointerInput(firstDelayMs, startIntervalMs, minIntervalMs) {
+        coroutineScope {
+            awaitEachGesture {
+                awaitFirstDown()
+                pressedChanged(true)
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                step()
+                val repeater = launch {
+                    delay(firstDelayMs)
+                    var interval = startIntervalMs
+                    while (isActive) {
+                        step()
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        delay(interval)
+                        interval = (interval * 0.88).toLong().coerceAtLeast(minIntervalMs)
+                    }
+                }
+                waitForUpOrCancellation()
+                repeater.cancel()
+                pressedChanged(false)
+            }
+        }
+    }
+}
+
+/** Round − / + button with hold-to-repeat (see [repeatOnHold]). */
 @Composable
 fun RepeatIconButton(
     icon: ImageVector,
     contentDescription: String,
     size: Dp = 40.dp,
+    firstDelayMs: Long = 400,
+    startIntervalMs: Long = 110,
+    minIntervalMs: Long = 35,
     onStep: () -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     val step by rememberUpdatedState(onStep)
     var pressed by remember { mutableStateOf(false) }
     Box(
@@ -426,29 +489,7 @@ fun RepeatIconButton(
                 role = Role.Button
                 onClick { step(); true }
             }
-            .pointerInput(Unit) {
-                coroutineScope {
-                    awaitEachGesture {
-                        awaitFirstDown()
-                        pressed = true
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        step()
-                        val repeater = launch {
-                            delay(400)
-                            var interval = 110L
-                            while (isActive) {
-                                step()
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                delay(interval)
-                                interval = (interval * 0.88).toLong().coerceAtLeast(35L)
-                            }
-                        }
-                        waitForUpOrCancellation()
-                        repeater.cancel()
-                        pressed = false
-                    }
-                }
-            },
+            .repeatOnHold(firstDelayMs, startIntervalMs, minIntervalMs, onPressedChange = { pressed = it }, onStep = onStep),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, null, Modifier.size(size * 0.5f), tint = MaterialTheme.colorScheme.onSurface)

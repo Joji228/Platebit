@@ -58,6 +58,7 @@ import app.morsel.domain.MealType
 import app.morsel.ui.components.MorselCard
 import app.morsel.ui.components.PillSelector
 import app.morsel.ui.components.PrimaryButton
+import app.morsel.ui.components.RepeatIconButton
 import app.morsel.ui.components.RoundIconButton
 import app.morsel.ui.components.SectionTitle
 import app.morsel.ui.components.format
@@ -205,7 +206,7 @@ fun ResultScreen(viewModel: ResultViewModel, onClose: () -> Unit, onSaved: () ->
                     item = item,
                     multiplier = state.multiplier,
                     onRename = { viewModel.rename(item.key, it) },
-                    onGrams = { viewModel.setGrams(item.key, it) },
+                    onNudge = { viewModel.nudgeGrams(item.key, it) },
                     onEditGrams = { editingGrams = item },
                     onRemove = { viewModel.remove(item.key) },
                 )
@@ -348,12 +349,11 @@ private fun ItemCard(
     item: EditableItem,
     multiplier: Double,
     onRename: (String) -> Unit,
-    onGrams: (Double) -> Unit,
+    onNudge: (direction: Int) -> Unit,
     onEditGrams: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val macros = item.macros(multiplier)
-    val step = if (item.grams < 50) 5.0 else 10.0
     MorselCard(padding = 14.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(
@@ -374,7 +374,8 @@ private fun ItemCard(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RoundIconButton(Icons.Rounded.Remove, "Less", { onGrams((item.grams - step).coerceAtLeast(0.0)) }, size = 36.dp)
+            // Hold to keep adding or removing, like every other +/− in the app.
+            RepeatIconButton(Icons.Rounded.Remove, "Less", size = 36.dp, onStep = { onNudge(-1) })
             Box(
                 Modifier
                     .weight(1f)
@@ -388,7 +389,7 @@ private fun ItemCard(
                     style = MaterialTheme.typography.titleLarge.merge(Numeric),
                 )
             }
-            RoundIconButton(Icons.Rounded.Add, "More", { onGrams(item.grams + step) }, size = 36.dp)
+            RepeatIconButton(Icons.Rounded.Add, "More", size = 36.dp, onStep = { onNudge(1) })
         }
         Spacer(Modifier.height(8.dp))
         Text(

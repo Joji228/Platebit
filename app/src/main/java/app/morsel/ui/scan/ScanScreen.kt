@@ -14,6 +14,12 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -96,6 +102,8 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
         ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
     }
     var showNote by remember { mutableStateOf(false) }
+    val flash = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize()) {
         Column(
@@ -141,6 +149,13 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
                     NoPermission(onAllow = { permissionLauncher.launch(Manifest.permission.CAMERA) })
                 }
                 ScannerCorners(Modifier.fillMaxSize())
+                // Shutter flash: appears the instant the button is pressed and fades out fast.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = flash.value }
+                        .background(Color.White),
+                )
                 if (viewModel.photos.isNotEmpty()) {
                     PhotoStrip(
                         viewModel = viewModel,
@@ -170,6 +185,10 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
                     enabled = hasPermission && viewModel.photos.size < ScanViewModel.MAX_PHOTOS,
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        scope.launch {
+                            flash.snapTo(0.8f)
+                            flash.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
+                        }
                         val file = viewModel.newCaptureFile()
                         imageCapture.takePicture(
                             ImageCapture.OutputFileOptions.Builder(file).build(),

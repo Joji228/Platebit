@@ -76,6 +76,11 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
         viewModelScope.launch { app.repository.logWeight(kg) }
     }
 
+    /** Removes a meal and its photo. */
+    fun deleteMeal(id: Long) {
+        viewModelScope.launch { app.repository.deleteMeal(id) }
+    }
+
     fun deleteWeight(id: Long) {
         viewModelScope.launch { app.repository.deleteWeight(id) }
     }
