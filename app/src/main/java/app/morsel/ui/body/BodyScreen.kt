@@ -84,15 +84,19 @@ private enum class Span(val label: String, val days: Long?) { M1("1M", 30), M3("
  */
 private val COMPOSITION_ROWS = listOf(
     Metric.FAT to listOf(Metric.FAT_MASS),
-    Metric.MUSCLE to listOf(Metric.MUSCLE_MASS, Metric.PROTEIN),
+    Metric.MUSCLE to listOf(Metric.PROTEIN),
     Metric.WATER to emptyList(),
-    Metric.BONE to listOf(Metric.BONE_MASS),
+    Metric.BONE to emptyList(),
     Metric.VISCERAL to emptyList(),
     Metric.BMR to emptyList(),
     Metric.BODY_AGE to emptyList(),
 )
 
 /** Metrics worth a full-size chart; the rest get a small one when their row is opened. */
+/** Rows that lead with kilograms: bone shows its mass instead of a share, muscle shows both. */
+private val SHOWN_AS = mapOf(Metric.BONE to Metric.BONE_MASS, Metric.MUSCLE to Metric.MUSCLE_MASS)
+private val ALSO_SHOW_SHARE = setOf(Metric.MUSCLE)
+
 private val CHART_METRICS = listOf(Metric.WEIGHT, Metric.BMI, Metric.FAT, Metric.MUSCLE, Metric.WATER, Metric.VISCERAL)
 
 @Composable
@@ -358,10 +362,13 @@ private fun CompositionCard(scan: BodyReport, previous: BodyReport?, series: Map
         Text("Body composition", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 6.dp))
         rows.forEachIndexed { index, (reading, details) ->
             if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 18.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            val shown = SHOWN_AS[reading.metric]?.let { m -> scan.readings.firstOrNull { it.metric == m } } ?: reading
             MetricRow(
                 reading = reading,
+                shown = shown,
+                share = reading.takeIf { it.metric in ALSO_SHOW_SHARE },
                 details = details,
-                change = previous?.value(reading.metric)?.let { reading.value - it },
+                change = previous?.value(shown.metric)?.let { shown.value - it },
                 expanded = open == reading.metric,
                 points = series[reading.metric].orEmpty(),
                 onToggle = { open = if (open == reading.metric) null else reading.metric },
@@ -372,9 +379,20 @@ private fun CompositionCard(scan: BodyReport, previous: BodyReport?, series: Map
 }
 
 @Composable
-private fun MetricRow(reading: Reading, details: List<Reading>, change: Double?, expanded: Boolean, points: List<ChartPoint>, onToggle: () -> Unit) {
+private fun MetricRow(
+    reading: Reading,
+    details: List<Reading>,
+    change: Double?,
+    expanded: Boolean,
+    points: List<ChartPoint>,
+    onToggle: () -> Unit,
+    /** The number in the row; another reading of the same thing in other units (bone and muscle in kg). */
+    shown: Reading = reading,
+    /** Also shown small under the number, e.g. muscle as a share of weight. */
+    share: Reading? = null,
+) {
     val metric = reading.metric
-    fun Double.withUnit() = format(metric.decimals) + if (metric.unit.isEmpty()) "" else " ${metric.unit}"
+    fun Double.withUnit(m: Metric = shown.metric) = format(m.decimals) + if (m.unit.isEmpty()) "" else " ${m.unit}"
     Column(
         Modifier
             .fillMaxWidth()
@@ -400,7 +418,10 @@ private fun MetricRow(reading: Reading, details: List<Reading>, change: Double?,
             Spacer(Modifier.width(8.dp))
             // Value over its status, so a long name never has to wrap beside them.
             Column(horizontalAlignment = Alignment.End) {
-                Text(reading.value.withUnit(), style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1)
+                Text(shown.value.withUnit(), style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1)
+                share?.let {
+                    Text(it.value.withUnit(it.metric), style = MaterialTheme.typography.labelSmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
                 reading.segment?.let {
                     Spacer(Modifier.height(3.dp))
                     Pill(it.label, it.tone.color())
