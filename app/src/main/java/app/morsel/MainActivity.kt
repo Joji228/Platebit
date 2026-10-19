@@ -74,6 +74,7 @@ import androidx.navigation.toRoute
 import app.morsel.data.ThemeMode
 import app.morsel.ui.theme.AccentColor
 import app.morsel.ui.body.BodyScreen
+import app.morsel.ui.scale.AutoWeighIn
 import app.morsel.ui.body.BodyViewModel
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
@@ -271,6 +272,8 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                 }
             }
         }
+        // Drawn over every screen: the smart scale's live weight and saved weigh-ins.
+        AutoWeighIn(container, onOpenBody = { nav.navigate(BodyRoute) { launchSingleTop = true } })
     }
 }
 

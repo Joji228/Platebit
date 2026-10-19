@@ -85,6 +85,10 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
     /** Live frames from the smart scale for as long as the weigh-in dialog is open. */
     fun scaleReadings() = app.scale.readings()
 
+    fun setManualWeighInOpen(open: Boolean) {
+        app.manualWeighInOpen.value = open
+    }
+
     /** Saves a smart-scale weigh-in; body composition is worked out here from the profile. */
     fun logScaleWeighIn(kg: Double, impedance: Int?) {
         val profile = state.value.profile

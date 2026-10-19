@@ -78,6 +78,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.Provider
 import app.morsel.data.ThemeMode
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.Manifest
 import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
@@ -114,6 +117,9 @@ fun SettingsScreen(
     var waterDialog by remember { mutableStateOf(false) }
     var resetDialog by remember { mutableStateOf(false) }
     var scaleConfirm by remember { mutableStateOf(false) }
+    // Hands-free weigh-ins need the Bluetooth scan permission; asked right when the scale is turned on.
+    val askBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val scaleContext = LocalContext.current
     var photoDialog by remember { mutableStateOf(false) }
     val photoStorage by viewModel.photoStorage.collectAsStateWithLifecycle()
     val storage by viewModel.storage.collectAsStateWithLifecycle()
@@ -321,7 +327,7 @@ fun SettingsScreen(
                             SwitchRow(
                                 title = "Xiaomi smart scale",
                                 subtitle = if (state.scaleEnabled) {
-                                    "On. Use Weigh in on the Weight card; tap the card for your Body screen"
+                                    "On. Open Platebit and step on the scale; weigh-ins save by themselves"
                                 } else {
                                     "For the Mi Body Composition Scale 2 (XMTZC05HM). Adds weigh-ins over Bluetooth and a Body screen"
                                 },
@@ -454,9 +460,11 @@ fun SettingsScreen(
                 Text(
                     "This works only with the Xiaomi Mi Body Composition Scale 2, model XMTZC05HM: the square glass scale " +
                         "with metal pads on top. Other Xiaomi scales won't be recognized.\n\n" +
-                        "Platebit listens for the scale's Bluetooth signal while you stand on it. There's nothing to pair " +
-                        "and it never needs your location, so the Zepp Life app keeps working as before.\n\n" +
-                        "You'll get a Weigh in button on the Weight card and a Body screen with body fat, muscle, water and more. " +
+                        "While Platebit is open on your screen, it listens for the scale and saves each weigh-in by itself, " +
+                        "with no button to press. It never listens in the background. There's nothing to pair, it never needs " +
+                        "your location, and the Zepp Life app keeps working as before. A weigh-in more than 5 kg from your " +
+                        "last one is checked with you first, in case someone else stepped on.\n\n" +
+                        "You'll also get a Body screen with body fat, muscle, water and more. " +
                         "These are estimates for following trends, not medical measurements.",
                 )
             },
@@ -464,6 +472,9 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     viewModel.setScaleEnabled(true)
                     scaleConfirm = false
+                    if (ContextCompat.checkSelfPermission(scaleContext, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                        askBluetooth.launch(Manifest.permission.BLUETOOTH_SCAN)
+                    }
                 }) { Text("Turn on") }
             },
             dismissButton = { TextButton(onClick = { scaleConfirm = false }) { Text("Cancel") } },

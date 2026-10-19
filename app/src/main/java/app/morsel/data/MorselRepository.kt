@@ -95,8 +95,11 @@ class MorselRepository(private val db: MorselDatabase) {
         WeightEntity(date = LocalDate.now().toString(), timestamp = System.currentTimeMillis(), kg = kg),
     )
 
-    /** A weigh-in from the smart scale; [composition] is null when it was weighed without impedance. */
-    suspend fun logScaleWeighIn(kg: Double, impedance: Int?, composition: BodyComposition?) = db.weights().insert(
+    /**
+     * A weigh-in from the smart scale; [composition] is null when it was weighed without impedance.
+     * Returns the new entry's id, so an automatic save can be undone.
+     */
+    suspend fun logScaleWeighIn(kg: Double, impedance: Int?, composition: BodyComposition?): Long = db.weights().insert(
         WeightEntity(
             date = LocalDate.now().toString(),
             timestamp = System.currentTimeMillis(),

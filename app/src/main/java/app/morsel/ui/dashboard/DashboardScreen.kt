@@ -76,6 +76,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -318,6 +319,10 @@ fun DashboardScreen(
         )
     }
     if (showScale) {
+        DisposableEffect(Unit) {
+            viewModel.setManualWeighInOpen(true)
+            onDispose { viewModel.setManualWeighInOpen(false) }
+        }
         ScaleDialog(
             profile = state.profile,
             scale = viewModel.scale,

@@ -185,7 +185,7 @@ interface WeightDao {
     fun observeAll(): Flow<List<WeightEntity>>
 
     @Insert
-    suspend fun insert(entry: WeightEntity)
+    suspend fun insert(entry: WeightEntity): Long
 
     @Query("DELETE FROM weights WHERE id = :id")
     suspend fun delete(id: Long)

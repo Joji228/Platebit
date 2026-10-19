@@ -49,6 +49,9 @@ class AppContainer(context: Context) {
     val storage = StorageInfo(context)
     val ai = AiService(settings)
     val scale = MiScaleScanner(context)
+
+    /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */
+    val manualWeighInOpen = MutableStateFlow(false)
     var draft: MealDraft? = null
 
     /** The day the dashboard is showing. Water taps go to it; scanned meals always go to today. */
