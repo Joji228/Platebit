@@ -25,7 +25,7 @@
 ## What it does
 
 - 📸 **Photo to calories.** Take a picture of your plate (or a nutrition label) and get calories, protein, carbs and fat. Adjust the grams or portion and it recalculates instantly.
-- 📊 **One clean dashboard.** Calories, macros, water and a weight trend you can swipe through day by day.
+- 📊 **One clean dashboard.** Calories, macros, water and a weight trend you can swipe through day by day, in any of 10 accent colors.
 - 🧠 **Smart target.** After a couple of weeks it compares what you eat with how your weight moves and tunes your daily calories to your real metabolism.
 - 🔑 **Bring your own AI.** Use DeepSeek, Gemini, OpenAI, Claude, or any OpenAI-compatible service. You pay the provider directly; Platebit has no servers.
 - 🔒 **Private by design.** No account, no ads, no tracking. Your meals stay on your phone, and photos go only to the AI you pick.
