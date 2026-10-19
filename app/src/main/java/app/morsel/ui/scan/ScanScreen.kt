@@ -14,6 +14,19 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
+import kotlinx.coroutines.delay
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
@@ -85,7 +98,7 @@ import app.morsel.ui.components.RoundIconButton
 import coil3.compose.AsyncImage
 
 @Composable
-fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
+fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     var hasPermission by remember {
@@ -104,11 +117,50 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
     var showNote by remember { mutableStateOf(false) }
     val flash = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    // Photos taken but still being written to storage. The Analyze button shows up the moment the
+    // shutter is pressed; a tap before the photo is saved starts the analysis as soon as it is.
+    var saving by remember { mutableIntStateOf(0) }
+    var analyzeWhenSaved by remember { mutableStateOf(false) }
+    LaunchedEffect(saving, analyzeWhenSaved) {
+        if (analyzeWhenSaved && saving == 0) {
+            analyzeWhenSaved = false
+            viewModel.analyze(onResult)
+        }
+    }
+    // Swiping right goes back to Today, mirroring the swipe that brought you here. The page
+    // follows the finger, then the tab transition carries it the rest of the way.
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    var swipeWidth by remember { mutableFloatStateOf(1f) }
+    val swipeState = rememberDraggableState { delta -> swipeOffset = (swipeOffset + delta).coerceAtLeast(0f) }
+    fun springBack() = scope.launch {
+        animate(swipeOffset, 0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) { v, _ -> swipeOffset = v }
+    }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { swipeWidth = it.width.toFloat().coerceAtLeast(1f) }
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = swipeState,
+                enabled = !viewModel.analyzing,
+                onDragStopped = { velocity ->
+                    if (swipeOffset > swipeWidth * 0.25f || velocity > 1500f) {
+                        onToday()
+                        // Only matters if the switch didn't happen: don't leave the page hanging off to the side.
+                        delay(600)
+                    }
+                    springBack()
+                },
+            ),
+    ) {
         Column(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    translationX = swipeOffset
+                    alpha = 1f - 0.5f * (swipeOffset / swipeWidth).coerceAtMost(1f)
+                }
                 .windowInsetsPadding(WindowInsets.statusBars),
         ) {
             Row(
@@ -190,15 +242,18 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
                             flash.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
                         }
                         val file = viewModel.newCaptureFile()
+                        saving++
                         imageCapture.takePicture(
                             ImageCapture.OutputFileOptions.Builder(file).build(),
                             ContextCompat.getMainExecutor(context),
                             object : ImageCapture.OnImageSavedCallback {
                                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                                     viewModel.addPhoto(file)
+                                    saving--
                                 }
 
                                 override fun onError(exception: ImageCaptureException) {
+                                    saving--
                                     viewModel.error = "Couldn't take the photo. ${exception.message.orEmpty()}"
                                 }
                             },
@@ -215,14 +270,20 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit) {
                 )
             }
 
-            AnimatedVisibility(viewModel.canAnalyze) {
+            AnimatedVisibility(
+                viewModel.canAnalyze || saving > 0,
+                // Quick enough to feel instant, still eased so it doesn't pop.
+                enter = expandVertically(tween(170, easing = FastOutSlowInEasing)) + fadeIn(tween(120)),
+                exit = shrinkVertically(tween(150, easing = FastOutSlowInEasing)) + fadeOut(tween(100)),
+            ) {
                 PrimaryButton(
-                    text = when (viewModel.photos.size) {
+                    enabled = !analyzeWhenSaved,
+                    text = when (viewModel.photos.size + saving) {
                         0 -> "Analyze description"
                         1 -> "Analyze photo"
                         else -> "Analyze ${viewModel.photos.size} photos"
                     },
-                    onClick = { viewModel.analyze(onResult) },
+                    onClick = { if (saving > 0) analyzeWhenSaved = true else viewModel.analyze(onResult) },
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 )
             }

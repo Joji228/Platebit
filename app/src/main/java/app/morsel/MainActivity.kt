@@ -216,7 +216,7 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
             composable<ScanRoute> {
                 Screen(bottom = barSpace) {
                     val vm = viewModel { ScanViewModel(container) }
-                    ScanScreen(vm, onResult = { nav.navigate(ResultRoute()) })
+                    ScanScreen(vm, onResult = { nav.navigate(ResultRoute()) }, onToday = { nav.switchTab(TodayRoute) })
                 }
             }
             composable<ResultRoute> { backStack ->
