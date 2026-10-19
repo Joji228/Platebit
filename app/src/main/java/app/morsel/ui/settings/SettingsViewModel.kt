@@ -133,10 +133,25 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     fun setFallbackProvider(provider: Provider) = viewModelScope.launch { app.settings.setFallbackProvider(provider) }
 
     /** Erases meals, water, weights, photos and the profile; optionally the API keys too. */
+    /** True while the Google Drive backup is being deleted before an erase. */
+    val erasing = MutableStateFlow(false)
+
     fun resetAll(keepKeys: Boolean, onDone: () -> Unit) {
         viewModelScope.launch {
-            // Signing out first, so the now-empty phone can't touch the Google Drive backup.
-            runCatching { app.backup.signOut() }
+            // The Google Drive backup goes first. If that fails, nothing is erased, so the phone
+            // and its backup are never left half deleted.
+            erasing.value = true
+            try {
+                app.backup.deleteEverything()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message.value = "Nothing was erased. Your Google Drive backup couldn't be deleted: " +
+                    "${e.message ?: "no connection"}. Check your connection and try again."
+                return@launch
+            } finally {
+                erasing.value = false
+            }
             app.repository.restore(Backup())
             app.photos.deleteAll()
             app.settings.clear(keepKeys)

@@ -122,6 +122,8 @@ fun SettingsScreen(
     var photoDialog by remember { mutableStateOf(false) }
     val photoStorage by viewModel.photoStorage.collectAsStateWithLifecycle()
     val storage by viewModel.storage.collectAsStateWithLifecycle()
+    val backupStatus by viewModel.backup.status.collectAsStateWithLifecycle()
+    val erasing by viewModel.erasing.collectAsStateWithLifecycle()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let { viewModel.export(context, it) }
@@ -333,7 +335,8 @@ fun SettingsScreen(
                         {
                             ListRow(
                                 "Erase everything and start over",
-                                subtitle = "Deletes meals, water, weight, photos and your profile",
+                                subtitle = "Deletes meals, water, weight, photos and your profile" +
+                                    if (backupStatus.signedIn) ", plus your Google Drive backup" else "",
                                 icon = Icons.Rounded.DeleteForever,
                                 iconTint = MaterialTheme.colorScheme.error,
                                 onClick = { resetDialog = true },
@@ -468,11 +471,26 @@ fun SettingsScreen(
     }
     if (resetDialog) {
         ResetDialog(
+            backupAccount = backupStatus.account?.email,
             onDismiss = { resetDialog = false },
             onConfirm = { keepKeys ->
                 resetDialog = false
                 viewModel.resetAll(keepKeys, onReset)
             },
+        )
+    }
+    if (erasing) {
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Text("Deleting your Google Drive backup…")
+                }
+            },
+            confirmButton = {},
         )
     }
     message?.let {
@@ -532,7 +550,7 @@ internal fun SwitchRow(
 
 /** Needs two taps on the red button, so a stray tap can't wipe months of data. */
 @Composable
-private fun ResetDialog(onDismiss: () -> Unit, onConfirm: (keepKeys: Boolean) -> Unit) {
+private fun ResetDialog(backupAccount: String?, onDismiss: () -> Unit, onConfirm: (keepKeys: Boolean) -> Unit) {
     var removeKeys by remember { mutableStateOf(false) }
     var armed by remember { mutableStateOf(false) }
     AlertDialog(
@@ -543,9 +561,14 @@ private fun ResetDialog(onDismiss: () -> Unit, onConfirm: (keepKeys: Boolean) ->
         text = {
             Column {
                 Text(
-                    "All meals, water, weight history, photos and your profile will be deleted from this phone. " +
-                        "This can't be undone. Export a backup first if you might want it back.\n\n" +
-                        "If Google Drive backup is on, this phone signs out first and the backup in your Drive is kept.",
+                    if (backupAccount != null) {
+                        "All meals, water, weight history, photos and your profile will be deleted from this phone, " +
+                            "and your backup in Google Drive ($backupAccount) will be deleted too. This can't be undone. " +
+                            "Export a backup file first if you might want it back."
+                    } else {
+                        "All meals, water, weight history, photos and your profile will be deleted from this phone. " +
+                            "This can't be undone. Export a backup first if you might want it back."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(8.dp))

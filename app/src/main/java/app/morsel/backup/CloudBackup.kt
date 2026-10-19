@@ -223,6 +223,37 @@ class CloudBackup(
         email?.let { auth.revoke(it) }
     }
 
+    /**
+     * For "Erase everything": deletes every Platebit file in the user's Drive (the latest backup
+     * and the daily copies), checks that none is left, then signs out. Throws when the backup
+     * couldn't be deleted, so the phone isn't erased while its backup lives on. Does nothing
+     * when no account is signed in.
+     */
+    suspend fun deleteEverything() {
+        val email = signedInEmail() ?: return
+        // No upload may start (and recreate the file) while the backup is being deleted.
+        work.cancelUniqueWork(SOON)
+        work.cancelUniqueWork(DAILY)
+        mutex.withLock {
+            try {
+                withToken { token ->
+                    drive.list(token).forEach { file -> runCatching { drive.delete(token, file.id) } }
+                    if (drive.list(token).isNotEmpty()) throw BackupException("Some backup files are still in your Google Drive")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: NeedsReconnectException) {
+                ensureDaily()
+                throw BackupException("Google needs you to sign in again first (Settings → Google Drive backup → Sign in again)")
+            } catch (e: Exception) {
+                ensureDaily()
+                throw e
+            }
+            store.edit { it.clear() }
+        }
+        auth.revoke(email)
+    }
+
     // ---- Restoring --------------------------------------------------------------------------
 
     suspend fun restorePoints(): List<RestorePoint> = withToken { token -> restorePoints(drive.list(token)) }
