@@ -8,6 +8,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
@@ -74,15 +76,25 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * Logging a packaged food in a few taps, for users who turned on Open Food Facts: search as you
- * type, pick the product, adjust the grams, tick. It's saved as its own meal for today.
+ * Logging a food in a few taps, on the day being viewed. With Open Food Facts on: search as you
+ * type, pick the product, adjust the grams, tick. Or type the food in yourself: a name, its
+ * calories and, if you know them, its macros. Without Open Food Facts only the typing remains.
  */
 @Composable
 fun QuickAddDialog(
-    search: suspend (String) -> List<FoodFact>,
+    /** Null when Open Food Facts is off: the dialog opens straight on typing it in. */
+    search: (suspend (String) -> List<FoodFact>)?,
     onDismiss: () -> Unit,
     onLog: (fact: FoodFact, name: String, grams: Double, type: MealType) -> Unit,
+    title: String = "Quick add",
+    /** A typed-in food: name, total kcal, protein, carbs and fat in grams, and its meal. */
+    onLogManual: ((name: String, kcal: Double, protein: Double, carbs: Double, fat: Double, type: MealType) -> Unit)? = null,
 ) {
+    var manual by remember { mutableStateOf(search == null) }
+    var kcal by remember { mutableStateOf("") }
+    var protein by remember { mutableStateOf("") }
+    var carbs by remember { mutableStateOf("") }
+    var fat by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<FoodFact>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
@@ -94,10 +106,10 @@ fun QuickAddDialog(
     val focus = remember { FocusRequester() }
     var closing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(manual) { runCatching { focus.requestFocus() } }
     LaunchedEffect(query) {
         val q = query.trim()
-        if (q.length < 2 || picked != null) {
+        if (search == null || q.length < 2 || picked != null) {
             if (picked == null) results = emptyList()
             problem = null
             return@LaunchedEffect
@@ -153,9 +165,26 @@ fun QuickAddDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Quick add", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     RoundIconButton(Icons.Rounded.Close, "Close", { closing = true })
                 }
+                if (manual && onLogManual != null) {
+                    ManualFood(
+                        name = name,
+                        onName = { name = it },
+                        kcal = kcal, onKcal = { kcal = it },
+                        protein = protein, onProtein = { protein = it },
+                        carbs = carbs, onCarbs = { carbs = it },
+                        fat = fat, onFat = { fat = it },
+                        type = type, onType = { type = it },
+                        focus = focus,
+                        onSearchInstead = if (search != null) ({ manual = false }) else null,
+                        onLog = {
+                            onLogManual(name.trim().ifBlank { "Food" }, it.kcal, it.protein, it.carbs, it.fat, type)
+                            closing = true
+                        },
+                    )
+                } else {
                 TextField(
                     query,
                     {
@@ -212,6 +241,15 @@ fun QuickAddDialog(
                         }
                     }
                     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (onLogManual != null) {
+                        TextButton(
+                            onClick = {
+                                name = query.trim()
+                                manual = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                        ) { Text("Not in the list? Enter calories yourself") }
+                    }
                 } else {
                     val g = grams.replace(',', '.').toDoubleOrNull() ?: 0.0
                     val factor = g / 100.0
@@ -233,29 +271,106 @@ fun QuickAddDialog(
                     PillSelector(MealType.entries, type, { it.title }, { type = it })
                     Row {
                         Spacer(Modifier.weight(1f))
-                        Surface(
-                            onClick = {
-                                if (g > 0) {
-                                    onLog(chosen, name.ifBlank { chosen.label }, g, type)
-                                    closing = true
-                                }
-                            },
-                            enabled = g > 0,
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ) {
-                            Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Check, null, Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Log it", style = MaterialTheme.typography.labelLarge)
-                            }
+                        LogButton(enabled = g > 0) {
+                            onLog(chosen, name.ifBlank { chosen.label }, g, type)
+                            closing = true
                         }
                     }
+                }
                 }
             }
         }
             }
+        }
+    }
+}
+
+/** What was typed into the manual form, as numbers; macros left empty count as 0. */
+internal data class TypedFood(val kcal: Double, val protein: Double, val carbs: Double, val fat: Double)
+
+internal fun typedFood(kcal: String, protein: String, carbs: String, fat: String): TypedFood? {
+    fun String.number() = trim().replace(',', '.').toDoubleOrNull()
+    val calories = kcal.number()?.takeIf { it > 0 && it <= 10_000 } ?: return null
+    fun macro(s: String) = (s.number() ?: 0.0).coerceIn(0.0, 1_000.0)
+    return TypedFood(calories, macro(protein), macro(carbs), macro(fat))
+}
+
+/** Typing a food in by hand: a name, its calories, and its macros if you know them. */
+@Composable
+private fun ManualFood(
+    name: String,
+    onName: (String) -> Unit,
+    kcal: String,
+    onKcal: (String) -> Unit,
+    protein: String,
+    onProtein: (String) -> Unit,
+    carbs: String,
+    onCarbs: (String) -> Unit,
+    fat: String,
+    onFat: (String) -> Unit,
+    type: MealType,
+    onType: (MealType) -> Unit,
+    focus: FocusRequester,
+    onSearchInstead: (() -> Unit)?,
+    onLog: (TypedFood) -> Unit,
+) {
+    val food = typedFood(kcal, protein, carbs, fat)
+    OutlinedTextField(
+        name, onName,
+        label = { Text("Food") },
+        placeholder = { Text("e.g. Homemade lasagna") },
+        singleLine = true,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focus),
+    )
+    NumberBox("Calories (kcal)", kcal, onKcal, Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        NumberBox("Protein g", protein, onProtein, Modifier.weight(1f))
+        NumberBox("Carbs g", carbs, onCarbs, Modifier.weight(1f))
+        NumberBox("Fat g", fat, onFat, Modifier.weight(1f))
+    }
+    Text(
+        "Totals for what you ate. Macros are optional.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    PillSelector(MealType.entries, type, { it.title }, onType)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (onSearchInstead != null) {
+            TextButton(onClick = onSearchInstead, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Search the database") }
+        }
+        Spacer(Modifier.weight(1f))
+        LogButton(enabled = food != null && name.isNotBlank()) { food?.let(onLog) }
+    }
+}
+
+@Composable
+private fun NumberBox(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier) {
+    OutlinedTextField(
+        value, onChange,
+        label = { Text(label, maxLines = 1) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LogButton(enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = { if (enabled) onClick() },
+        enabled = enabled,
+        shape = RoundedCornerShape(50),
+        color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Check, null, Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Log it", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

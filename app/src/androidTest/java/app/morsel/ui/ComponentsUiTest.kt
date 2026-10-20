@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -73,5 +74,31 @@ class ComponentsUiTest {
             assertEquals(42.0, grams, 0.0) // the 41.5 g serving, shown and logged rounded
             assertEquals(MealType.SNACK, type) // a chocolate bar is a snack whatever the time
         }
+    }
+
+    @Test
+    fun addFoodByHandWithoutTheDatabase() {
+        var logged: List<Any>? = null
+        rule.setContent {
+            MorselTheme(dark = true) {
+                QuickAddDialog(
+                    search = null, // Open Food Facts off: it opens straight on typing it in
+                    title = "Add food · Yesterday",
+                    onDismiss = {},
+                    onLog = { _, _, _, _ -> },
+                    onLogManual = { name, kcal, protein, carbs, fat, type -> logged = listOf(name, kcal, protein, carbs, fat, type) },
+                )
+            }
+        }
+        rule.onNodeWithText("Add food · Yesterday").assertExists()
+        // Nothing to log until there's a name and calories
+        rule.onNodeWithText("Log it").performClick()
+        rule.runOnIdle { assertEquals(null, logged) }
+        rule.onNode(hasSetTextAction() and hasText("Food")).performTextInput("Homemade lasagna")
+        rule.onNode(hasSetTextAction() and hasText("Calories (kcal)")).performTextInput("650")
+        rule.onNode(hasSetTextAction() and hasText("Protein g")).performTextInput("32")
+        rule.onNodeWithText("Dinner").performClick()
+        rule.onNodeWithText("Log it").performClick()
+        rule.runOnIdle { assertEquals(listOf("Homemade lasagna", 650.0, 32.0, 0.0, 0.0, MealType.DINNER), logged) }
     }
 }

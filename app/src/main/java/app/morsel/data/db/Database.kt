@@ -187,6 +187,10 @@ interface WeightDao {
     @Insert
     suspend fun insert(entry: WeightEntity): Long
 
+    /** When the last weigh-in of [date] was logged, or null if that day has none. */
+    @Query("SELECT MAX(timestamp) FROM weights WHERE date = :date")
+    suspend fun latestOn(date: String): Long?
+
     @Query("DELETE FROM weights WHERE id = :id")
     suspend fun delete(id: Long)
 

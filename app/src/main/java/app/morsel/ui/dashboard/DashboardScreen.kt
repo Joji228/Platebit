@@ -272,10 +272,20 @@ fun DashboardScreen(
             }
             item {
                 Spacer(Modifier.height(4.dp))
-                SectionTitle("Meals", trailing = "${state.eaten.kcal.format()} kcal")
+                // The + adds food to the day on screen, past days included (no camera for those).
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+                    Text("Meals", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(
+                        "${state.eaten.kcal.format()} kcal",
+                        style = MaterialTheme.typography.titleSmall.merge(Numeric),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    RoundIconButton(Icons.Rounded.Add, "Add food", { showQuickAdd = true }, size = 36.dp)
+                }
             }
             if (state.meals.isEmpty() && !state.loading) {
-                item { EmptyMeals(isToday = state.date == state.today, onScan = onScan) }
+                item { EmptyMeals(isToday = state.date == state.today, onScan = onScan, onAdd = { showQuickAdd = true }) }
             }
             val groups = state.meals.groupBy { MealType.parse(it.meal.mealType) }
             MealType.entries.forEach { type ->
@@ -324,25 +334,43 @@ fun DashboardScreen(
         )
     }
     if (showQuickAdd) {
+        // Whatever day is on screen when it opens is the day the food goes to.
+        val day = remember { state.date }
+        val label = dayLabel(day, state.today)
         QuickAddDialog(
-            search = viewModel::searchFoods,
+            search = if (foodFactsOn) viewModel::searchFoods else null,
+            title = "Add food · $label",
             onDismiss = { showQuickAdd = false },
             onLog = { fact, name, grams, type ->
-                viewModel.quickLog(fact, name, grams, type)
-                Toast.makeText(context, "Logged  ·  kcal", Toast.LENGTH_SHORT).show()
+                viewModel.quickLog(fact, name, grams, type, day)
+                val kcal = (fact.kcalPer100 * grams / 100).format()
+                Toast.makeText(context, "Logged $name · $kcal kcal · $label", Toast.LENGTH_SHORT).show()
+            },
+            onLogManual = { name, kcal, protein, carbs, fat, type ->
+                viewModel.manualLog(name, kcal, protein, carbs, fat, type, day)
+                Toast.makeText(context, "Logged $name · ${kcal.format()} kcal · $label", Toast.LENGTH_SHORT).show()
             },
         )
     }
     if (showWeightDialog) {
+        val day = remember { state.date }
         WeightDialog(
             initial = state.currentWeight ?: 80.0,
+            day = dayLabel(day, state.today),
             onDismiss = { showWeightDialog = false },
             onSave = {
-                viewModel.logWeight(it)
+                viewModel.logWeight(it, day)
                 showWeightDialog = false
             },
         )
     }
+}
+
+/** "Today", "Yesterday" or "Sun 18 Oct": which day a new entry goes to. */
+private fun dayLabel(date: LocalDate, today: LocalDate): String = when (date) {
+    today -> "Today"
+    today.minusDays(1) -> "Yesterday"
+    else -> date.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
 }
 
 @Composable
@@ -767,7 +795,7 @@ private fun MacroTag(letter: String, grams: Double, color: androidx.compose.ui.g
 }
 
 @Composable
-private fun EmptyMeals(isToday: Boolean, onScan: () -> Unit) {
+private fun EmptyMeals(isToday: Boolean, onScan: () -> Unit, onAdd: () -> Unit) {
     MorselCard {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -786,20 +814,18 @@ private fun EmptyMeals(isToday: Boolean, onScan: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Snap a photo of your plate and Platebit estimates the rest.",
+                if (isToday) "Snap a photo of your plate and Platebit estimates the rest." else "Forgot something? Add it to this day.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (isToday) {
-                Spacer(Modifier.height(16.dp))
-                PrimaryButton("Open camera", onScan)
-            }
+            Spacer(Modifier.height(16.dp))
+            if (isToday) PrimaryButton("Open camera", onScan) else PrimaryButton("Add food", onAdd)
         }
     }
 }
 
 @Composable
-private fun WeightDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
+private fun WeightDialog(initial: Double, day: String, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
     var kg by remember { mutableDoubleStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -807,7 +833,7 @@ private fun WeightDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double
         title = { Text("Log weight") },
         text = {
             NumberStepper(
-                label = "Today",
+                label = day,
                 value = kg,
                 onValueChange = { kg = it },
                 range = 30.0..250.0,

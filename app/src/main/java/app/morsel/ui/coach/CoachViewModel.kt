@@ -9,6 +9,7 @@ import app.morsel.data.CoachAction
 import app.morsel.data.CoachActions
 import app.morsel.data.CoachContext
 import app.morsel.data.CoachMessage
+import app.morsel.data.EntryTime
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
 import app.morsel.data.db.macros
@@ -24,7 +25,6 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -161,19 +161,11 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
     private suspend fun perform(a: CoachAction): String {
         val today = LocalDate.now()
         val date = a.date?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: today
-        // Today's entries get the current time; another day's get a sensible time on that day, so
-        // everything stays in order.
-        fun stamp(time: LocalTime) =
-            if (date == today) System.currentTimeMillis() else date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun stamp(time: LocalTime) = EntryTime.stamp(date, time, today)
         return when (a.type) {
             ActionType.LOG_FOOD -> {
                 val type = MealType.fromAi(a.mealType) ?: MealType.forTime()
-                val time = when (type) {
-                    MealType.BREAKFAST -> LocalTime.of(8, 0)
-                    MealType.LUNCH -> LocalTime.of(13, 0)
-                    MealType.DINNER -> LocalTime.of(19, 30)
-                    MealType.SNACK -> LocalTime.of(16, 0)
-                }
+                val time = EntryTime.meal(type)
                 val name = a.name ?: a.foods.first().name
                 app.repository.saveMeal(
                     MealEntity(date = date.toString(), timestamp = stamp(time), mealType = type.name, name = name, source = "AI coach"),
@@ -193,7 +185,7 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
             }
             ActionType.LOG_WEIGHT -> {
                 val kg = a.kg ?: error("no weight")
-                if (date == today) app.repository.logWeight(kg) else app.repository.logWeight(kg, date, stamp(LocalTime.of(7, 30)))
+                if (date == today) app.repository.logWeight(kg) else app.repository.logWeight(kg, date, stamp(EntryTime.WEIGH_IN))
                 "Logged ${String.format(Locale.US, "%.1f", kg)} kg"
             }
             ActionType.SET_CALORIES -> {

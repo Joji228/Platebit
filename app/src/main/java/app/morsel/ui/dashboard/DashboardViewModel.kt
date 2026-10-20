@@ -9,6 +9,7 @@ import app.morsel.data.db.macros
 import app.morsel.domain.MealType
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
+import app.morsel.data.EntryTime
 import app.morsel.data.FoodFact
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,8 +79,12 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
         viewModelScope.launch { app.repository.undoWater(date.value) }
     }
 
-    fun logWeight(kg: Double) {
-        viewModelScope.launch { app.repository.logWeight(kg) }
+    /** A typed-in weigh-in for [date], the day being viewed. The smart scale only ever logs today. */
+    fun logWeight(kg: Double, date: LocalDate) {
+        viewModelScope.launch {
+            val today = app.clock.today.value
+            if (date == today) app.repository.logWeight(kg) else app.repository.logWeight(kg, date, EntryTime.stamp(date, EntryTime.WEIGH_IN, today))
+        }
     }
 
     /** Off by default; the Body screen and composition line only appear once it's turned on in Settings. */
@@ -90,33 +95,47 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
 
     suspend fun searchFoods(query: String): List<FoodFact> = app.foodFacts.search(query)
 
-    /** Logs one Open Food Facts product as its own meal, for today like every new meal. */
-    fun quickLog(fact: FoodFact, name: String, grams: Double, type: MealType) {
+    /** Logs one Open Food Facts product as its own meal, on [date] (the day being viewed). */
+    fun quickLog(fact: FoodFact, name: String, grams: Double, type: MealType, date: LocalDate) {
+        logMeal(
+            date, type, name, "Open Food Facts",
+            FoodItemEntity(
+                mealId = 0,
+                name = fact.label,
+                grams = grams,
+                kcalPer100 = fact.kcalPer100,
+                proteinPer100 = fact.proteinPer100,
+                carbsPer100 = fact.carbsPer100,
+                fatPer100 = fact.fatPer100,
+            ),
+        )
+    }
+
+    /**
+     * A food typed in by hand: its total calories and macros. Stored as a 100 g item so the
+     * per-100 g values are the totals and editing it later works like any other meal.
+     */
+    fun manualLog(name: String, kcal: Double, protein: Double, carbs: Double, fat: Double, type: MealType, date: LocalDate) {
+        logMeal(
+            date, type, name, "Added by hand",
+            FoodItemEntity(mealId = 0, name = name, grams = 100.0, kcalPer100 = kcal, proteinPer100 = protein, carbsPer100 = carbs, fatPer100 = fat),
+        )
+    }
+
+    private fun logMeal(date: LocalDate, type: MealType, name: String, source: String, item: FoodItemEntity) {
         viewModelScope.launch {
-            val today = app.clock.today.value
             app.repository.saveMeal(
                 MealEntity(
-                    date = today.toString(),
-                    timestamp = System.currentTimeMillis(),
+                    date = date.toString(),
+                    timestamp = EntryTime.stamp(date, EntryTime.meal(type), today = app.clock.today.value),
                     mealType = type.name,
                     name = name,
                     photoPath = null,
-                    source = "Open Food Facts",
+                    source = source,
                     note = null,
                 ),
-                listOf(
-                    FoodItemEntity(
-                        mealId = 0,
-                        name = fact.label,
-                        grams = grams,
-                        kcalPer100 = fact.kcalPer100,
-                        proteinPer100 = fact.proteinPer100,
-                        carbsPer100 = fact.carbsPer100,
-                        fatPer100 = fact.fatPer100,
-                    ),
-                ),
+                listOf(item),
             )
-            app.viewedDay.value = today
         }
     }
 

@@ -107,10 +107,15 @@ class MorselRepository(
         WeightEntity(date = LocalDate.now().toString(), timestamp = System.currentTimeMillis(), kg = kg),
     )
 
-    /** A weigh-in for another day (from the coach), timed in its morning so the trend stays in order. */
-    suspend fun logWeight(kg: Double, date: LocalDate, timestamp: Long) = db.weights().insert(
-        WeightEntity(date = date.toString(), timestamp = timestamp, kg = kg),
-    )
+    /**
+     * A typed-in weigh-in for another day, timed at [timestamp] (its morning). If that day already
+     * has a later weigh-in, this one goes just after it: the latest weigh-in of a day is the one the
+     * trend uses, and a weight added afterwards is usually a correction.
+     */
+    suspend fun logWeight(kg: Double, date: LocalDate, timestamp: Long): Long {
+        val after = db.weights().latestOn(date.toString())?.let { it + 60_000 }
+        return db.weights().insert(WeightEntity(date = date.toString(), timestamp = maxOf(timestamp, after ?: 0L), kg = kg))
+    }
 
     /** Water for any day, stamped with the given time (the coach can log a past day's water). */
     suspend fun addWater(date: LocalDate, ml: Int, timestamp: Long) =
