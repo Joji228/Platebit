@@ -27,7 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddComment
+import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -184,7 +184,8 @@ fun CoachContent(
             Pill("Beta", MaterialTheme.colorScheme.primary)
             Spacer(Modifier.weight(1f))
             if (messages.isNotEmpty()) {
-                RoundIconButton(Icons.Rounded.AddComment, "New chat", { confirmNew = true })
+                // A broom-and-bin icon: this wipes the conversation, it doesn't open a second one.
+                RoundIconButton(Icons.Rounded.DeleteSweep, "Clear chat", { confirmNew = true })
             }
         }
 
@@ -263,13 +264,13 @@ fun CoachContent(
         AlertDialog(
             onDismissRequest = { confirmNew = false },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            title = { Text("Start a new chat?") },
-            text = { Text("This conversation will be deleted. Your data in the app stays as it is.") },
+            title = { Text("Clear this chat?") },
+            text = { Text("The whole conversation is deleted and the coach starts fresh. Your meals, weigh-ins and everything else in the app stay as they are.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmNew = false
                     onNewChat()
-                }) { Text("New chat") }
+                }) { Text("Clear chat", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmNew = false }) { Text("Cancel") } },
         )

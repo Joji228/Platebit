@@ -70,10 +70,10 @@ class CoachUiTest {
         rule.onNodeWithText("Retry").performClick()
         rule.runOnIdle { assertTrue(retried) }
 
-        // New chat asks first
-        rule.onNodeWithContentDescription("New chat").performClick()
-        rule.onNodeWithText("Start a new chat?").assertIsDisplayed()
-        rule.onNodeWithText("New chat").performClick()
+        // Clearing the chat asks first
+        rule.onNodeWithContentDescription("Clear chat").performClick()
+        rule.onNodeWithText("Clear this chat?").assertIsDisplayed()
+        rule.onNodeWithText("Clear chat").performClick()
         rule.runOnIdle { assertTrue(cleared) }
     }
 

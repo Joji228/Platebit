@@ -22,7 +22,7 @@ data class CoachMessage(
 /**
  * The current coach conversation, kept in one small file in the app's private storage. It is
  * not in the database (no migration, nothing to break) and not in backups. Only the latest
- * conversation exists: "New chat", turning the coach off and erasing everything delete it.
+ * conversation exists: "Clear chat", turning the coach off and erasing everything delete it.
  */
 class CoachStore(private val dir: File) {
     private val file get() = File(dir, "chat.json")
