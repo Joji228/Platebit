@@ -10,9 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.4/Platebit-1.3.4.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" alt="Download APK"></a>
-  &nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="MIT license"></a>
+  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.4/Platebit-1.3.4.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" height="40" alt="Download APK"></a>
 </p>
 
 <p align="center">
