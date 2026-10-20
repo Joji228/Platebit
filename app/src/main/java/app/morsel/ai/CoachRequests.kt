@@ -1,5 +1,6 @@
 package app.morsel.ai
 
+import app.morsel.data.AppRegion
 import app.morsel.data.CoachActions
 import app.morsel.data.CoachMessage
 import app.morsel.data.Provider
@@ -49,7 +50,19 @@ Making changes in the app:
     /** Enough turns for a real conversation; older ones drop off so requests stay small. */
     const val HISTORY_MESSAGES = 20
 
-    fun system(context: String) = SYSTEM + "\n\n" + context
+    /** Lets the coach search Open Food Facts; only offered when the user has the food database on. */
+    const val LOOKUPS = """Looking up products:
+- You can search the Open Food Facts product database. When the user mentions a packaged or branded product (Lacta, Fage, Coca-Cola, Kit Kat, a supermarket product) and its nutrition matters, because they want to log it or ask about it, first reply with only this and nothing else:
+<lookup>brand and product in a few words</lookup>
+  One line per product, at most 3. Search in the words the product is sold under; Greek names are fine.
+- The app answers with the matching products and their label values per 100 g, products sold in Greece first. Pick the one that fits (ask if it's truly unclear) and then answer normally. The database is crowd-sourced: prefer an entry whose values look complete and plausible (a chocolate with 0 g protein is a data gap, not the real value).
+- When you log a product from those results, use its values and add "off_code" with its code to that item, like {"name":"Lacta milk chocolate","grams":25,...,"off_code":"5201360..."}.
+- Plain foods (a banana, rice, chicken breast, a homemade souvlaki) don't need a lookup: use your own knowledge."""
+
+    const val NO_LOOKUPS = "The product database is turned off in this app, so use your own knowledge for branded products too."
+
+    fun system(context: String, lookups: Boolean = false) =
+        SYSTEM + "\n" + AppRegion.PROMPT_HINT + "\n" + (if (lookups) LOOKUPS else NO_LOOKUPS) + "\n\n" + context
 }
 
 /**

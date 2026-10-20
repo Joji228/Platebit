@@ -30,6 +30,8 @@ data class ActionFood(
     val proteinPer100: Double,
     val carbsPer100: Double,
     val fatPer100: Double,
+    /** The Open Food Facts product these label values come from, when the coach looked it up. */
+    val offCode: String? = null,
 ) {
     val macros get() = Macros(kcalPer100, proteinPer100, carbsPer100, fatPer100) * (grams / 100.0)
 }
@@ -73,6 +75,21 @@ object CoachActions {
     private val fence = Regex("""```(?:json)?\s*(.*?)```""", RegexOption.DOT_MATCHES_ALL)
 
     data class Parsed(val text: String, val actions: List<CoachAction>)
+
+    /**
+     * Swaps in the exact label values for foods the coach took from an Open Food Facts lookup
+     * ([found], by product code), so a slip in copying numbers can't log wrong ones. A code that
+     * wasn't in this answer's lookups is dropped: only checked products get the tag.
+     */
+    fun withLabelValues(action: CoachAction, found: Map<String, FoodFact>): CoachAction {
+        if (action.type != ActionType.LOG_FOOD || action.foods.none { it.offCode != null }) return action
+        return action.copy(
+            foods = action.foods.map { food ->
+                val fact = food.offCode?.let { found[it] } ?: return@map food.copy(offCode = null)
+                food.copy(kcalPer100 = fact.kcalPer100, proteinPer100 = fact.proteinPer100, carbsPer100 = fact.carbsPer100, fatPer100 = fact.fatPer100)
+            },
+        )
+    }
 
     fun parse(raw: String, today: LocalDate): Parsed {
         val match = block.find(raw) ?: fence.findAll(raw).firstOrNull { "\"type\"" in it.groupValues[1] }
@@ -150,6 +167,7 @@ object CoachActions {
             proteinPer100 = (o.num("protein_per_100g") ?: 0.0).coerceIn(0.0, 100.0),
             carbsPer100 = (o.num("carbs_per_100g") ?: 0.0).coerceIn(0.0, 100.0),
             fatPer100 = (o.num("fat_per_100g") ?: 0.0).coerceIn(0.0, 100.0),
+            offCode = o.str("off_code")?.trim()?.takeIf { it.isNotEmpty() && it.length <= 32 },
         )
     }
 

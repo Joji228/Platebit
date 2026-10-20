@@ -71,4 +71,18 @@ class FoodFactsParserTest {
         ]}"""
         assertEquals(listOf(true, true, false), FoodFactsParser.parse(body).map { it.snack })
     }
+
+    @Test
+    fun productsSoldInGreeceComeFirst() {
+        val body = """{"hits":[
+          {"code":"1","product_name":"Lacta intense 70%","brands":["Lacta"],"countries_tags":["en:switzerland"],"nutriments":{"energy-kcal_100g":548}},
+          {"code":"2","product_name":"Lacta","brands":["Lacta"],"countries_tags":["en:greece"],"nutriments":{"energy-kcal_100g":526}},
+          {"code":"3","product_name":"Lacta Banoffee","brands":["Lacta"],"countries_tags":["en:serbia"],"nutriments":{"energy-kcal_100g":531}},
+          {"code":"4","product_name":"lacta Αμύγδαλο","brands":["lacta"],"countries_tags":["en:greece","en:cyprus"],"nutriments":{"energy-kcal_100g":536}}
+        ]}"""
+        val facts = FoodFactsParser.parse(body)
+        assertEquals(listOf(false, true, false, true), facts.map { it.local })
+        // Greek ones first, each group keeping Open Food Facts' own order
+        assertEquals(listOf("2", "4", "1", "3"), FoodFactsParser.localFirst(facts).map { it.code })
+    }
 }

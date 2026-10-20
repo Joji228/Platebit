@@ -3,6 +3,7 @@ package app.morsel.ai
 import android.util.Base64
 import app.morsel.data.AiSettings
 import app.morsel.data.ApiKind
+import app.morsel.data.AppRegion
 import app.morsel.data.CoachMessage
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
@@ -107,6 +108,7 @@ If there is no food, return {"meal_name": "", "items": [], "confidence": "low", 
             },
         )
         if (!note.isNullOrBlank()) append("\nUser's description: ").append(note.trim())
+        append("\n").append(AppRegion.PROMPT_HINT)
         append("\nLocal time: ").append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE HH:mm", Locale.ENGLISH)))
         append("\nReturn JSON only.")
     }
@@ -155,7 +157,7 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
      * the conversation so far, ending with the user's question. Uses the same engine, model,
      * DeepSeek thinking level and backup engine as meal scans.
      */
-    suspend fun chat(context: String, messages: List<CoachMessage>): CoachReply {
+    suspend fun chat(context: String, messages: List<CoachMessage>, lookups: Boolean = false): CoachReply {
         val history = CoachRequests.history(messages)
         if (history.isEmpty() || !history.last().fromUser) throw AiException("Ask the coach something first")
         val ai = settings.ai.first()
@@ -166,7 +168,7 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
         }
         val usable = listOfNotNull(ai.primary, ai.fallbackTarget).filter { ai.isReady(it) }
         if (usable.isEmpty()) throw AiException(errors.joinToString("\n"))
-        val system = CoachPrompt.system(context)
+        val system = CoachPrompt.system(context, lookups)
         for (provider in usable) {
             try {
                 val model = resolveModel(provider, ai)

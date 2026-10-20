@@ -91,6 +91,7 @@ import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.WaterDrop
 import app.morsel.data.ActionStatus
 import app.morsel.data.ActionType
@@ -116,6 +117,7 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
     val error by viewModel.error.collectAsStateWithLifecycle()
     val loaded by viewModel.loaded.collectAsStateWithLifecycle()
     val typing by viewModel.typing.collectAsStateWithLifecycle()
+    val activity by viewModel.activity.collectAsStateWithLifecycle()
     CoachContent(
         messages = messages,
         thinking = thinking,
@@ -126,6 +128,7 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
         onNewChat = viewModel::newChat,
         onBack = onBack,
         typingAt = typing,
+        activity = activity,
         onTyped = viewModel::typed,
         onAccept = viewModel::accept,
         onDecline = viewModel::decline,
@@ -145,6 +148,8 @@ fun CoachContent(
     onBack: () -> Unit,
     /** The answer (by its time) to type out letter by letter; older ones show in full. */
     typingAt: Long? = null,
+    /** Shown instead of "Thinking…" while the coach does something else, like a product lookup. */
+    activity: String? = null,
     onTyped: () -> Unit = {},
     /** Accept or Decline on a proposed change: the message it belongs to (by time) and its position. */
     onAccept: (Long, Int) -> Unit = { _, _ -> },
@@ -208,7 +213,7 @@ fun CoachContent(
                         }
                     }
                     if (thinking) {
-                        item { Thinking() }
+                        item { Thinking(activity ?: "Thinking…") }
                     } else if (error != null) {
                         item { ErrorRow(error, onRetry) }
                     }
@@ -368,7 +373,7 @@ private fun CoachText(text: String, typing: Boolean = false, onTyped: () -> Unit
 }
 
 @Composable
-private fun Thinking() {
+private fun Thinking(label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(
             Modifier.size(14.dp),
@@ -376,7 +381,7 @@ private fun Thinking() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.width(10.dp))
-        Text("Thinking…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -458,6 +463,20 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    // Label values checked against the product database, not estimated.
+                    if (action.foods.any { it.offCode != null }) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Verified, null, Modifier.size(14.dp), tint = Nutrient.Water)
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (action.foods.all { it.offCode != null }) "Label values from Open Food Facts"
+                                else "Branded items use Open Food Facts label values",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 ActionType.DELETE_MEAL -> {
                     Spacer(Modifier.height(6.dp))

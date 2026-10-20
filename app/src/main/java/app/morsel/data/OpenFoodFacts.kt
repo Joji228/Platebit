@@ -32,6 +32,8 @@ data class FoodFact(
     val servingGrams: Double? = null,
     /** Snacks, sweets and drinks by Open Food Facts' categories: Quick add files these as a Snack. */
     val snack: Boolean = false,
+    /** Sold in the app's country ([AppRegion]); these come first in search results. */
+    val local: Boolean = false,
 ) {
     /** "Oreo · Oreo Original" style label, without repeating the brand. */
     val label: String get() = if (brand.isNullOrBlank() || name.contains(brand, ignoreCase = true)) name else "$brand $name"
@@ -50,16 +52,19 @@ class OpenFoodFacts(version: String, client: OkHttpClient) {
         .build()
     private val userAgent = "Platebit/$version (https://github.com/Joji228/Platebit)"
 
-    /** Products matching [query], best first; only ones with usable nutrition are kept. */
+    /**
+     * Products matching [query], best first, with ones sold in the app's country ahead of the
+     * rest; only ones with usable nutrition are kept.
+     */
     suspend fun search(query: String, size: Int = 8): List<FoodFact> {
         val url = "https://search.openfoodfacts.org/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", query.trim())
-            .addQueryParameter("page_size", (size * 2).toString()) // some hits lack nutrition and are dropped
-            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity,categories_tags")
+            .addQueryParameter("page_size", (size * 3).toString()) // some hits lack nutrition and are dropped
+            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity,categories_tags,countries_tags")
             .build()
         val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
         val body = http.newCall(request).await()
-        return FoodFactsParser.parse(body).take(size)
+        return FoodFactsParser.localFirst(FoodFactsParser.parse(body)).take(size)
     }
 
     /**
@@ -150,8 +155,12 @@ object FoodFactsParser {
                 val t = (tag as? JsonPrimitive)?.content.orEmpty()
                 SNACK_WORDS.any { it in t }
             },
+            local = (hit["countries_tags"] as? JsonArray).orEmpty().any { (it as? JsonPrimitive)?.content == AppRegion.FOOD_FACTS_COUNTRY },
         )
     }
+
+    /** Products sold in the app's country first; otherwise Open Food Facts' own order is kept. */
+    fun localFirst(facts: List<FoodFact>): List<FoodFact> = facts.sortedByDescending { it.local }
 
     fun bestMatch(product: String, candidates: List<FoodFact>): FoodFact? {
         val words = product.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }

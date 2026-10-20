@@ -52,6 +52,18 @@ class CoachRequestsTest {
     }
 
     @Test
+    fun theCoachKnowsItsInGreeceAndWhetherItCanLookUp() {
+        val on = CoachPrompt.system("DATA", lookups = true)
+        assertTrue(on.contains("lives in Greece"))
+        assertTrue(on.contains("<lookup>"))
+        assertTrue(on.endsWith("DATA"))
+        val off = CoachPrompt.system("DATA", lookups = false)
+        assertTrue(off.contains("lives in Greece"))
+        assertFalse(off.contains("<lookup>"))
+        assertTrue(off.contains("product database is turned off"))
+    }
+
+    @Test
     fun systemPromptHasTheRulesThenTheData() {
         assertTrue(system.startsWith(CoachPrompt.SYSTEM))
         assertTrue(system.endsWith("# The user's Platebit data"))

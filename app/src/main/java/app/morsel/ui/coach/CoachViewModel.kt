@@ -9,6 +9,12 @@ import app.morsel.data.CoachAction
 import app.morsel.data.CoachActions
 import app.morsel.data.CoachContext
 import app.morsel.data.CoachMessage
+import app.morsel.data.CoachLookup
+import app.morsel.data.FoodFact
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import app.morsel.data.EntryTime
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
@@ -33,6 +39,9 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
 
     /** True while the coach is working on an answer. */
     val thinking = MutableStateFlow(false)
+
+    /** What the coach is doing beyond thinking, like "Checking Open Food Facts…"; null otherwise. */
+    val activity = MutableStateFlow<String?>(null)
 
     /** Why the last question got no answer; shown in the chat with a Retry button. */
     val error = MutableStateFlow<String?>(null)
@@ -130,9 +139,30 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
                     val data = app.repository.export(null, null)
                     CoachContext.build(LocalDateTime.now(), app.plans.plan.first(), data.meals, data.items, data.water, data.weights)
                 }
-                val reply = app.ai.chat(context, messages.value)
-                val parsed = CoachActions.parse(reply.text, LocalDate.now())
-                val actions = parsed.actions.mapNotNull { prepare(it) }
+                // With the food database on, the coach may first ask to look products up; the
+                // results go back to it (never into the chat) and it answers from the label values.
+                val lookups = app.settings.useFoodFacts.first()
+                val found = mutableMapOf<String, FoodFact>()
+                var history = messages.value
+                var round = 0
+                var reply = app.ai.chat(context, history, lookups)
+                while (lookups && round < CoachLookup.MAX_ROUNDS) {
+                    val queries = CoachLookup.queries(reply.text)
+                    if (queries.isEmpty()) break
+                    activity.value = "Checking Open Food Facts…"
+                    val results = coroutineScope {
+                        queries.map { q ->
+                            async { q to withTimeoutOrNull(8_000) { runCatching { app.foodFacts.search(q, CoachLookup.RESULTS_PER_QUERY) }.getOrNull() } }
+                        }.awaitAll()
+                    }
+                    results.forEach { (_, facts) -> facts?.forEach { if (it.code.isNotBlank()) found[it.code] = it } }
+                    history = history + CoachMessage(fromUser = false, text = reply.text) + CoachMessage(fromUser = true, text = CoachLookup.results(results))
+                    activity.value = null
+                    round++
+                    reply = app.ai.chat(context, history, lookups)
+                }
+                val parsed = CoachActions.parse(CoachLookup.strip(reply.text), LocalDate.now())
+                val actions = parsed.actions.mapNotNull { prepare(it) }.map { CoachActions.withLabelValues(it, found) }
                 val text = parsed.text.ifBlank {
                     if (actions.isNotEmpty()) "Here's what I've prepared:" else "I couldn't prepare that. Could you say it another way?"
                 }
@@ -146,6 +176,7 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
                 error.value = e.message ?: "Couldn't reach the AI engine"
             } finally {
                 thinking.value = false
+                activity.value = null
             }
         }
     }
