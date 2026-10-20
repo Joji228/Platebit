@@ -13,6 +13,15 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import android.util.Size
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.compose.animation.AnimatedVisibility
 import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.onSizeChanged
@@ -120,6 +129,32 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
     // Photos taken but still being written to storage. The Analyze button shows up the moment the
     // shutter is pressed; a tap before the photo is saved starts the analysis as soon as it is.
     var saving by remember { mutableIntStateOf(0) }
+
+    /** Takes a photo: shutter flash and haptic right away, added to the photos once it's saved. */
+    fun capture() {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        scope.launch {
+            flash.snapTo(0.8f)
+            flash.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
+        }
+        val file = viewModel.newCaptureFile()
+        saving++
+        imageCapture.takePicture(
+            ImageCapture.OutputFileOptions.Builder(file).build(),
+            ContextCompat.getMainExecutor(context),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    viewModel.addPhoto(file)
+                    saving--
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    saving--
+                    viewModel.error = "Couldn't take the photo. ${exception.message.orEmpty()}"
+                }
+            },
+        )
+    }
     var analyzeWhenSaved by remember { mutableStateOf(false) }
     LaunchedEffect(saving, analyzeWhenSaved) {
         if (analyzeWhenSaved && saving == 0) {
@@ -196,7 +231,27 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                     .background(Color(0xFF0D0D0F)),
             ) {
                 if (hasPermission) {
-                    CameraPreview(imageCapture, viewModel.torch, Modifier.fillMaxSize())
+                    val foodFactsOn by viewModel.foodFactsEnabled.collectAsStateWithLifecycle(initialValue = false)
+                    // Battery guard: barcodes are watched for the first minute on this screen; coming back restarts it.
+                    var watchWindowOpen by remember { mutableStateOf(true) }
+                    LaunchedEffect(Unit) {
+                        delay(60_000)
+                        watchWindowOpen = false
+                    }
+                    val watchBarcodes = foodFactsOn && watchWindowOpen && viewModel.photos.isEmpty() && saving == 0 && !viewModel.analyzing && !showNote
+                    CameraPreview(
+                        imageCapture,
+                        viewModel.torch,
+                        Modifier.fillMaxSize(),
+                        barcodes = foodFactsOn,
+                        onBarcode = if (watchBarcodes) {
+                            { code ->
+                                if (viewModel.barcodeSeen(code, onResult)) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        } else {
+                            null
+                        },
+                    )
                 } else {
                     NoPermission(onAllow = { permissionLauncher.launch(Manifest.permission.CAMERA) })
                 }
@@ -235,30 +290,8 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                 )
                 Shutter(
                     enabled = hasPermission && viewModel.photos.size < ScanViewModel.MAX_PHOTOS,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        scope.launch {
-                            flash.snapTo(0.8f)
-                            flash.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
-                        }
-                        val file = viewModel.newCaptureFile()
-                        saving++
-                        imageCapture.takePicture(
-                            ImageCapture.OutputFileOptions.Builder(file).build(),
-                            ContextCompat.getMainExecutor(context),
-                            object : ImageCapture.OnImageSavedCallback {
-                                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                    viewModel.addPhoto(file)
-                                    saving--
-                                }
+                    onClick = ::capture,
 
-                                override fun onError(exception: ImageCaptureException) {
-                                    saving--
-                                    viewModel.error = "Couldn't take the photo. ${exception.message.orEmpty()}"
-                                }
-                            },
-                        )
-                    },
                 )
                 RoundIconButton(
                     Icons.Rounded.Edit,
@@ -271,7 +304,7 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
             }
 
             AnimatedVisibility(
-                viewModel.canAnalyze || saving > 0,
+                hasPermission || viewModel.canAnalyze || saving > 0,
                 // Quick enough to feel instant, still eased so it doesn't pop.
                 enter = expandVertically(tween(170, easing = FastOutSlowInEasing)) + fadeIn(tween(120)),
                 exit = shrinkVertically(tween(150, easing = FastOutSlowInEasing)) + fadeOut(tween(100)),
@@ -279,11 +312,21 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                 PrimaryButton(
                     enabled = !analyzeWhenSaved,
                     text = when (viewModel.photos.size + saving) {
-                        0 -> "Analyze description"
+                        0 -> if (viewModel.note.isBlank()) "Snap and analyze" else "Analyze description"
                         1 -> "Analyze photo"
                         else -> "Analyze ${viewModel.photos.size} photos"
                     },
-                    onClick = { if (saving > 0) analyzeWhenSaved = true else viewModel.analyze(onResult) },
+                    onClick = {
+                        when {
+                            // One tap for the usual single plate photo: take it, then analyze as soon as it's saved.
+                            viewModel.photos.isEmpty() && saving == 0 && viewModel.note.isBlank() -> if (hasPermission) {
+                                capture()
+                                analyzeWhenSaved = true
+                            }
+                            saving > 0 -> analyzeWhenSaved = true
+                            else -> viewModel.analyze(onResult)
+                        }
+                    },
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 )
             }
@@ -327,7 +370,15 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
 }
 
 @Composable
-private fun CameraPreview(imageCapture: ImageCapture, torch: Boolean, modifier: Modifier) {
+private fun CameraPreview(
+    imageCapture: ImageCapture,
+    torch: Boolean,
+    modifier: Modifier,
+    /** Set up barcode watching at all (Open Food Facts on). Changing it rebuilds the camera, so it's kept steady. */
+    barcodes: Boolean = false,
+    /** Whether to look at frames right now; null pauses watching without touching the camera. */
+    onBarcode: ((String) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
@@ -337,14 +388,45 @@ private fun CameraPreview(imageCapture: ImageCapture, torch: Boolean, modifier: 
         }
     }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    // Live barcode watching runs on its own thread, only while asked for; it stops with the screen.
+    val latestOnBarcode by rememberUpdatedState(onBarcode)
+    val scanning = barcodes
+    // Read from the camera thread: paused frames are dropped at once, at almost no cost.
+    val watching = remember { AtomicBoolean(false) }
+    watching.set(onBarcode != null)
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) { onDispose { analysisExecutor.shutdown() } }
 
-    LaunchedEffect(lifecycleOwner) {
+    LaunchedEffect(lifecycleOwner, scanning) {
         val provider = ProcessCameraProvider.awaitInstance(context)
         val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+        val analysis = if (scanning) {
+            ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                        .build(),
+                )
+                .build()
+                .also { use ->
+                    val main = ContextCompat.getMainExecutor(context)
+                    use.setAnalyzer(analysisExecutor, LiveBarcodeAnalyzer(isActive = { watching.get() }) { code -> main.execute { latestOnBarcode?.invoke(code) } })
+                }
+        } else {
+            null
+        }
         provider.unbindAll()
         camera = runCatching<Camera> {
-            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
-        }.getOrNull()
+            if (analysis != null) {
+                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, analysis)
+            } else {
+                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+            }
+        }.getOrElse {
+            // A camera that can't run all three at once still gets the normal viewfinder.
+            runCatching<Camera> { provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture) }.getOrNull()
+        }
     }
     LaunchedEffect(camera, torch) {
         camera?.let { if (it.cameraInfo.hasFlashUnit()) it.cameraControl.enableTorch(torch) }

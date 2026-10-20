@@ -19,6 +19,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import app.morsel.ai.AnalysisResult
 import app.morsel.data.BarcodeReader
+import app.morsel.data.FoodFact
 import app.morsel.ai.AiMeal
 import app.morsel.ai.AiItem
 import java.io.File
@@ -98,6 +99,10 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
             coroutineScope { codes.map { code -> async { runCatching { app.foodFacts.product(code) }.getOrNull() } }.awaitAll() }
         }?.filterNotNull().orEmpty()
         if (facts.isEmpty()) return null
+        return resultFromFacts(facts)
+    }
+
+    private suspend fun resultFromFacts(facts: List<FoodFact>): AnalysisResult {
         val items = facts.map {
             AiItem(
                 name = it.label,
@@ -148,6 +153,41 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
             )
         }
         return result.copy(meal = result.meal.copy(items = items))
+    }
+
+    /** Open Food Facts lookups only happen for users who turned it on. */
+    val foodFactsEnabled = app.settings.useFoodFacts
+
+    /** Barcodes already looked up without a match, so the viewfinder doesn't keep asking about them. */
+    private val unknownCodes = mutableMapOf<String, Long>()
+
+    /**
+     * A barcode spotted live in the viewfinder: look it up and, when Open Food Facts has it, go
+     * straight to the result, no photo or tap needed. Returns false when it's ignored (busy, or a
+     * code just looked up without a match).
+     */
+    fun barcodeSeen(code: String, onReady: () -> Unit): Boolean {
+        val now = System.currentTimeMillis()
+        if (analyzing || photos.isNotEmpty() || (unknownCodes[code]?.let { now - it < 20_000 } == true)) return false
+        torch = false
+        job = viewModelScope.launch {
+            analyzing = true
+            error = null
+            try {
+                val fact = withTimeoutOrNull(6_000) { runCatching { app.foodFacts.product(code) }.getOrNull() }
+                if (fact == null) {
+                    unknownCodes[code] = System.currentTimeMillis()
+                    error = "Barcode $code isn't on Open Food Facts. Take a photo and the AI will estimate it."
+                } else {
+                    app.draft = MealDraft(emptyList(), note.ifBlank { null }, resultFromFacts(listOf(fact)), app.clock.today.value)
+                    reset()
+                    onReady()
+                }
+            } finally {
+                analyzing = false
+            }
+        }
+        return true
     }
 
     fun cancelAnalysis() {
