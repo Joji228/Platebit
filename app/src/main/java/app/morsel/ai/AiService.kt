@@ -456,7 +456,18 @@ internal object AiResponses {
         if (start < 0 || end <= start) throw AiException("The answer wasn't readable")
         val meal = runCatching { json.decodeFromString<AiMeal>(raw.substring(start, end + 1)) }
             .getOrElse { throw AiException("The answer wasn't readable") }
-        return meal.copy(items = meal.items.filter { it.name.isNotBlank() && it.grams > 0 })
+        // A misread number can't log something absurd: keep every value inside what food can be.
+        return meal.copy(
+            items = meal.items.filter { it.name.isNotBlank() && it.grams > 0 }.map {
+                it.copy(
+                    grams = it.grams.coerceIn(1.0, 5000.0),
+                    kcalPer100 = it.kcalPer100.coerceIn(0.0, 900.0),
+                    proteinPer100 = it.proteinPer100.coerceIn(0.0, 100.0),
+                    carbsPer100 = it.carbsPer100.coerceIn(0.0, 100.0),
+                    fatPer100 = it.fatPer100.coerceIn(0.0, 100.0),
+                )
+            },
+        )
     }
 
     fun describeError(provider: Provider, code: Int, body: String): String {

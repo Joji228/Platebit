@@ -30,6 +30,8 @@ data class FoodFact(
     val fatPer100: Double,
     /** One serving in grams, when the product lists it (a Kit Kat 4-finger bar is 41.5 g). */
     val servingGrams: Double? = null,
+    /** Snacks, sweets and drinks by Open Food Facts' categories: Quick add files these as a Snack. */
+    val snack: Boolean = false,
 ) {
     /** "Oreo · Oreo Original" style label, without repeating the brand. */
     val label: String get() = if (brand.isNullOrBlank() || name.contains(brand, ignoreCase = true)) name else "$brand $name"
@@ -52,7 +54,7 @@ class OpenFoodFacts(version: String) {
         val url = "https://search.openfoodfacts.org/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", query.trim())
             .addQueryParameter("page_size", (size * 2).toString()) // some hits lack nutrition and are dropped
-            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity")
+            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity,categories_tags")
             .build()
         val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
         val body = http.newCall(request).await()
@@ -67,7 +69,7 @@ class OpenFoodFacts(version: String) {
     /** The product with this barcode, or null when Open Food Facts doesn't have it (or lacks its nutrition). */
     suspend fun product(barcode: String): FoodFact? {
         val url = "https://world.openfoodfacts.org/api/v2/product/$barcode.json".toHttpUrl().newBuilder()
-            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity")
+            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity,categories_tags")
             .build()
         val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
         val body = try {
@@ -103,8 +105,16 @@ object FoodFactsParser {
 
     fun parse(body: String): List<FoodFact> {
         val hits = runCatching { json.parseToJsonElement(body).jsonObject["hits"]?.jsonArray }.getOrNull() ?: return emptyList()
-        return hits.mapNotNull { hit -> (hit as? JsonObject)?.let(::product) }
+        val parsed = hits.mapNotNull { hit -> (hit as? JsonObject)?.let { obj -> product(obj)?.let { it to obj.hasCategories() } } }
+        // Many entries have no categories at all. One of those counts as a snack when another
+        // result from the same brand is one (an uncategorized "Kit Kat" next to categorized ones).
+        val snackBrands = parsed.filter { (fact, _) -> fact.snack }.mapNotNull { (fact, _) -> fact.brand?.lowercase() }.toSet()
+        return parsed.map { (fact, categorized) ->
+            if (!categorized && fact.brand?.lowercase() in snackBrands) fact.copy(snack = true) else fact
+        }
     }
+
+    private fun JsonObject.hasCategories() = (this["categories_tags"] as? JsonArray)?.isNotEmpty() == true
 
     /** A single product answer ({"status":1,"product":{...}}) from the barcode lookup. */
     fun parseProduct(body: String, barcode: String): FoodFact? {
@@ -135,6 +145,10 @@ object FoodFactsParser {
             carbsPer100 = num("carbohydrates_100g") ?: 0.0,
             fatPer100 = num("fat_100g") ?: 0.0,
             servingGrams = (hit["serving_quantity"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 1.0..2000.0 },
+            snack = (hit["categories_tags"] as? JsonArray).orEmpty().any { tag ->
+                val t = (tag as? JsonPrimitive)?.content.orEmpty()
+                SNACK_WORDS.any { it in t }
+            },
         )
     }
 
@@ -148,4 +162,5 @@ object FoodFactsParser {
     }
 
     private const val KJ_PER_KCAL = 4.184
+    private val SNACK_WORDS = listOf("snack", "sweet", "chocolate", "biscuit", "confectioner", "crisp", "chips", "candies", "candy", "beverage", "drink")
 }

@@ -16,10 +16,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/1-dashboard.png?v=2" width="23%" alt="Dashboard">
-  <img src="docs/screenshots/2-trend-and-meals.png?v=2" width="23%" alt="Weight trend and meals">
-  <img src="docs/screenshots/3-scan-result.png?v=2" width="23%" alt="Scan result">
-  <img src="docs/screenshots/4-ai-engine.png" width="23%" alt="AI engine settings">
+  <img src="docs/screenshots/1-dashboard.png?v=3" width="23%" alt="Today dashboard">
+  <img src="docs/screenshots/2-body.png?v=3" width="23%" alt="Body screen with body composition">
+  <img src="docs/screenshots/3-scan-result.png?v=3" width="23%" alt="Scan result">
+  <img src="docs/screenshots/4-quick-add.png?v=3" width="23%" alt="Quick add from Open Food Facts">
 </p>
 
 ## What it does

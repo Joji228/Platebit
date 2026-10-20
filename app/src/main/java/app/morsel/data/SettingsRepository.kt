@@ -106,8 +106,6 @@ class SettingsRepository(context: Context) {
 
     suspend fun backup(): SettingsBackup = backupOf(store.data.first())
 
-    /** Emits whenever the profile or a backed-up setting changes; key edits don't count. */
-    val backupChanges: Flow<Any> = store.data.map { prefs -> prefs[profileKey] to backupOf(prefs) }.distinctUntilChanged()
 
     /** Puts restored settings in place. Missing values (older backups) leave the current ones alone. */
     suspend fun restore(backup: SettingsBackup) {

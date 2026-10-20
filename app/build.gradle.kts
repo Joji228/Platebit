@@ -19,6 +19,7 @@ android {
         // already on the phone without wiping its data); versionName is what the user sees.
         versionCode = 15
         versionName = "1.1.5"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Release signing comes from keystore.properties in the project root, which is git-ignored
@@ -62,6 +63,8 @@ android {
 
     // Lets unit tests read the exported database schemas.
     sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")
+    // The migration test on the device reads them too.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
 
 // Each database version's schema is saved under app/schemas and committed, so every future
@@ -103,10 +106,13 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.coil.compose)
 
-    // Google Drive backup: Google account access, and background uploads.
-    implementation(libs.play.services.auth)
-    implementation(libs.kotlinx.coroutines.play.services)
-    implementation(libs.androidx.work.runtime)
-
     testImplementation(libs.junit)
+
+    // Device tests (run on the emulator only): database migration and Compose UI.
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

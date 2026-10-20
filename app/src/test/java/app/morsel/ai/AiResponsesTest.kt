@@ -77,4 +77,17 @@ class AiResponsesTest {
         assertNull(MealType.fromAi("brunch"))
         assertEquals(MealType.DINNER, MealType.fromAi(" dinner "))
     }
+
+    @Test
+    fun absurdNumbersAreKeptInsideWhatFoodCanBe() {
+        val meal = AiResponses.parseMeal(
+            """{"meal_name": "X", "items": [{"name": "glitch", "grams": 99999, "kcal_per_100g": 9000, "protein_per_100g": -5, "carbs_per_100g": 250, "fat_per_100g": 101}]}""",
+        )
+        val item = meal.items.single()
+        assertEquals(5000.0, item.grams, 0.0)
+        assertEquals(900.0, item.kcalPer100, 0.0)
+        assertEquals(0.0, item.proteinPer100, 0.0)
+        assertEquals(100.0, item.carbsPer100, 0.0)
+        assertEquals(100.0, item.fatPer100, 0.0)
+    }
 }

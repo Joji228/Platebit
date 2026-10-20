@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import app.morsel.AppContainer
 import app.morsel.data.db.WeightEntity
 import app.morsel.domain.BodyAnalysis
-import app.morsel.domain.BodyCompositionCalc
 import app.morsel.domain.BodyReport
 import app.morsel.domain.Metric
 import app.morsel.domain.UserProfile
@@ -16,7 +15,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import kotlin.math.pow
 
@@ -48,16 +46,6 @@ class BodyViewModel(private val app: AppContainer) : ViewModel() {
         val profile = plan.profile ?: return@combine BodyState(loading = false, today = today)
         build(profile, plan.weighIns, today)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BodyState())
-
-    val scale get() = app.scale
-
-    fun scaleReadings() = app.scale.readings()
-
-    fun logScaleWeighIn(kg: Double, impedance: Int?) {
-        val profile = state.value.profile
-        val composition = profile?.let { BodyCompositionCalc.compute(kg, impedance, it) }
-        viewModelScope.launch { app.repository.logScaleWeighIn(kg, impedance, composition) }
-    }
 
     private fun build(profile: UserProfile, weighIns: List<WeightEntity>, today: LocalDate): BodyState {
         if (weighIns.isEmpty()) return BodyState(loading = false, profile = profile, today = today)

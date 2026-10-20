@@ -5,7 +5,6 @@ import android.content.Context
 import androidx.room.Room
 import app.morsel.ai.AiService
 import app.morsel.ai.AnalysisResult
-import app.morsel.backup.CloudBackup
 import app.morsel.ble.MiScaleScanner
 import app.morsel.data.DayClock
 import app.morsel.data.MorselRepository
@@ -47,7 +46,7 @@ class AppContainer(context: Context) {
         .build()
     val clock = DayClock(scope)
     val settings = SettingsRepository(context)
-    val repository = MorselRepository(database)
+    val repository = MorselRepository(database, File(context.filesDir, "meals"))
     val plans = PlanRepository(settings, repository, clock)
     val photos = PhotoStore(context)
     val storage = StorageInfo(context)
@@ -56,7 +55,6 @@ class AppContainer(context: Context) {
 
     /** The free Open Food Facts product database; only used when turned on in Settings. */
     val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1")
-    val backup = CloudBackup(context, repository, settings, scope)
 
     /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */
     val manualWeighInOpen = MutableStateFlow(false)
@@ -76,17 +74,6 @@ class AppContainer(context: Context) {
                 }
             }
         }
-    }
-
-    init {
-        // Google Drive backup: any change to the logs, profile or settings queues an upload.
-        scope.launch {
-            merge(
-                database.invalidationTracker.createFlow("meals", "food_items", "water", "weights", emitInitialState = false),
-                settings.backupChanges.drop(1),
-            ).collect { backup.onDataChanged() }
-        }
-        scope.launch { runCatching { backup.onAppStart() } }
     }
 
     init {

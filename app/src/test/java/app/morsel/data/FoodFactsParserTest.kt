@@ -50,4 +50,25 @@ class FoodFactsParserTest {
         assertEquals(15.0, fact.servingGrams!!, 0.0)
         assertNull(FoodFactsParser.parseProduct("""{"status":0,"status_verbose":"product not found"}""", "1"))
     }
+
+    @Test
+    fun snackCategoriesAreRecognized() {
+        val body = """{"hits":[
+          {"code":"1","product_name":"Kit Kat","brands":["Nestle"],"categories_tags":["en:snacks","en:sweet-snacks","en:chocolates"],"nutriments":{"energy-kcal_100g":518}},
+          {"code":"2","product_name":"Penne","brands":["Barilla"],"categories_tags":["en:pastas","en:dry-pastas"],"nutriments":{"energy-kcal_100g":359}},
+          {"code":"3","product_name":"Water","nutriments":{"energy-kcal_100g":1}}
+        ]}"""
+        val facts = FoodFactsParser.parse(body)
+        assertEquals(listOf(true, false, false), facts.map { it.snack })
+    }
+
+    @Test
+    fun uncategorizedProductsFollowTheirBrand() {
+        val body = """{"hits":[
+          {"code":"1","product_name":"Kit Kat Chunky","brands":["Kit Kat"],"categories_tags":["en:snacks","en:chocolates"],"nutriments":{"energy-kcal_100g":518}},
+          {"code":"2","product_name":"Kit Kat","brands":["Kit Kat"],"nutriments":{"energy-kcal_100g":500}},
+          {"code":"3","product_name":"Penne","brands":["Barilla"],"nutriments":{"energy-kcal_100g":359}}
+        ]}"""
+        assertEquals(listOf(true, true, false), FoodFactsParser.parse(body).map { it.snack })
+    }
 }

@@ -46,7 +46,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.R
-import app.morsel.backup.CloudBackup
 import app.morsel.domain.Activity
 import app.morsel.domain.Nutrition
 import app.morsel.domain.Sex
@@ -57,7 +56,6 @@ import app.morsel.ui.components.PrimaryButton
 import app.morsel.ui.components.ProgressLine
 import app.morsel.ui.components.RoundIconButton
 import app.morsel.ui.components.format
-import app.morsel.ui.settings.RestoreFromDriveButton
 import app.morsel.ui.theme.Numeric
 import app.morsel.ui.theme.Nutrient
 import java.time.LocalDate
@@ -66,7 +64,7 @@ import java.util.Locale
 import kotlin.math.roundToLong
 
 @Composable
-fun OnboardingScreen(viewModel: OnboardingViewModel, backup: CloudBackup, onDone: () -> Unit, onExit: () -> Unit, onRestored: () -> Unit) {
+fun OnboardingScreen(viewModel: OnboardingViewModel, onDone: () -> Unit, onExit: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler { if (!viewModel.back()) onExit() }
 
@@ -128,18 +126,8 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, backup: CloudBackup, onDone
             },
             onClick = { if (state.step == Step.PLAN) viewModel.finish(onDone) else viewModel.next() },
             enabled = state.loaded,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (state.step == Step.WELCOME && CloudBackup.AVAILABLE) 0.dp else 16.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
         )
-        if (state.step == Step.WELCOME && CloudBackup.AVAILABLE) {
-            // Setting up a new phone: bring everything back from Google Drive instead.
-            RestoreFromDriveButton(
-                backup,
-                onRestored = onRestored,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(bottom = 8.dp),
-            )
-        }
     }
 }
 

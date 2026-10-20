@@ -196,6 +196,8 @@ fun QuickAddDialog(
                                             picked = fact
                                             name = fact.label
                                             grams = (fact.servingGrams ?: 100.0).format()
+                                            // A chocolate bar or a drink is a snack whatever the hour; anything else follows the time.
+                                            type = if (fact.snack) MealType.SNACK else MealType.forTime()
                                         }
                                         .padding(vertical = 10.dp, horizontal = 4.dp),
                                 ) {

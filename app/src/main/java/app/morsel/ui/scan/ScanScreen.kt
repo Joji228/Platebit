@@ -13,6 +13,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.DisposableEffect
@@ -252,6 +253,24 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                             null
                         },
                     )
+                    // Tells people the viewfinder is looking for barcodes, only while it actually is.
+                    // (Qualified: inside this column the column-only overload would be picked otherwise.)
+                    androidx.compose.animation.AnimatedVisibility(
+                        watchBarcodes,
+                        enter = fadeIn(tween(200)),
+                        exit = fadeOut(tween(200)),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                    ) {
+                        Surface(shape = RoundedCornerShape(50), color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.QrCodeScanner, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Point at a barcode to look it up", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
                 } else {
                     NoPermission(onAllow = { permissionLauncher.launch(Manifest.permission.CAMERA) })
                 }

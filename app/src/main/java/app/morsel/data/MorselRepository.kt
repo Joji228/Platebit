@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 import java.io.File
 import java.time.LocalDate
 
-/** Everything the app stores, minus API keys and photos. Used for export/import and the Google Drive backup. */
+/** Everything the app stores, minus API keys and photos. Used for Export / Import backup. */
 @Serializable
 data class Backup(
     val version: Int = 2,
@@ -30,7 +30,13 @@ data class Backup(
 
 const val PHOTO_DAYS = 30
 
-class MorselRepository(private val db: MorselDatabase) {
+class MorselRepository(
+    private val db: MorselDatabase,
+    /** Where meal photos live; the only folder this class ever deletes files from. */
+    private val mealDir: File,
+) {
+    private fun isMealPhoto(path: String?) = MealPhotos.isMealPhoto(path, mealDir)
+
 
     fun mealsFor(date: LocalDate) = db.meals().observeDay(date.toString())
 
@@ -59,7 +65,7 @@ class MorselRepository(private val db: MorselDatabase) {
     suspend fun deleteMeal(id: Long) {
         val photo = db.meals().get(id)?.meal?.photoPath
         db.meals().delete(id)
-        photo?.let { File(it).delete() }
+        photo?.takeIf(::isMealPhoto)?.let { File(it).delete() }
     }
 
     /**
@@ -69,7 +75,7 @@ class MorselRepository(private val db: MorselDatabase) {
     suspend fun prunePhotos(photos: List<File>, days: Int = PHOTO_DAYS) {
         val cutoff = System.currentTimeMillis() - days * 24L * 60 * 60 * 1000
         val old = db.meals().withPhotosBefore(cutoff)
-        old.forEach { meal -> meal.photoPath?.let { File(it).delete() } }
+        old.forEach { meal -> meal.photoPath?.takeIf(::isMealPhoto)?.let { File(it).delete() } }
         if (old.isNotEmpty()) db.meals().clearPhotos(old.map { it.id })
         val referenced = db.meals().photoPaths().toSet()
         photos.filter { it.absolutePath !in referenced }.forEach { it.delete() }
@@ -81,7 +87,8 @@ class MorselRepository(private val db: MorselDatabase) {
      * on another phone; backups don't carry photos) drop the link instead of showing an empty box.
      */
     suspend fun clearMissingPhotos() {
-        val missing = db.meals().withPhotosBefore(Long.MAX_VALUE).filter { m -> m.photoPath?.let { !File(it).exists() } == true }
+        // A link outside the photo folder (from a crafted or broken backup) is dropped as well.
+        val missing = db.meals().withPhotosBefore(Long.MAX_VALUE).filter { m -> m.photoPath?.let { !isMealPhoto(it) || !File(it).exists() } == true }
         if (missing.isNotEmpty()) db.meals().clearPhotos(missing.map { it.id })
     }
 
@@ -131,7 +138,8 @@ class MorselRepository(private val db: MorselDatabase) {
         db.meals().clear()
         db.water().clear()
         db.weights().clear()
-        db.meals().insertMeals(backup.meals)
+        // Photos never travel in a backup; any path in the file is kept only if it points into the photo folder.
+        db.meals().insertMeals(backup.meals.map { if (isMealPhoto(it.photoPath)) it else it.copy(photoPath = null) })
         db.meals().insertItems(backup.items)
         db.water().insertAll(backup.water)
         db.weights().insertAll(backup.weights)

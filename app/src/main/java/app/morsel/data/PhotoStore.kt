@@ -12,6 +12,20 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** Which files count as meal photos, so nothing else in the app's storage is ever deleted. */
+object MealPhotos {
+    /**
+     * True only for a file directly inside [mealDir]. A path from an imported backup is just text;
+     * one pointing anywhere else (for example the database) is never followed or deleted.
+     */
+    fun isMealPhoto(path: String?, mealDir: File): Boolean {
+        if (path.isNullOrBlank()) return false
+        val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
+        val dir = runCatching { mealDir.canonicalFile }.getOrNull() ?: return false
+        return file.parentFile == dir
+    }
+}
+
 class PhotoStore(private val context: Context) {
     private val captureDir get() = File(context.cacheDir, "captures").apply { mkdirs() }
     private val mealDir get() = File(context.filesDir, "meals").apply { mkdirs() }
