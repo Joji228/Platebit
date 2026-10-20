@@ -28,6 +28,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Remove
@@ -66,6 +68,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.rounded.Search
 import app.morsel.data.FoodFact
+import app.morsel.data.FoodSource
 import app.morsel.domain.MealType
 import app.morsel.ui.components.MorselCard
 import app.morsel.ui.components.PillSelector
@@ -154,9 +157,12 @@ fun ResultScreen(viewModel: ResultViewModel, onClose: () -> Unit, onSaved: () ->
                         },
                     )
                     state.source?.let { source ->
+                        // Blue tick: label values from Open Food Facts. Green sparkle: estimated by AI.
+                        // A scan that used both shows both, the tick first.
+                        val marks = FoodSource.marks(source, state.items.any { it.foodFacts != null })
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                            SourceMarks(marks)
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 source + (state.confidence?.let { " · $it confidence" } ?: ""),
@@ -387,13 +393,17 @@ private fun ItemCard(
             }
         }
         item.foodFacts?.let {
-            Text(
-                "Open Food Facts · $it",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Verified, null, Modifier.size(13.dp), tint = Nutrient.Water)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Open Food Facts · $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Nutrient.Water,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -583,3 +593,14 @@ private fun NumberField(label: String, value: String, modifier: Modifier = Modif
 }
 
 private fun String.toNumber(): Double? = replace(',', '.').filter { it.isDigit() || it == '.' }.toDoubleOrNull()
+
+/** Where the numbers came from, at a glance: blue tick for Open Food Facts, green sparkle for AI. */
+@Composable
+private fun SourceMarks(marks: FoodSource.Marks) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (marks.foodFacts) Icon(Icons.Rounded.Verified, "From Open Food Facts", Modifier.size(14.dp), tint = Nutrient.Water)
+        if (marks.foodFacts && marks.ai) Spacer(Modifier.width(3.dp))
+        if (marks.ai) Icon(Icons.Rounded.AutoAwesome, "Estimated by AI", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+        if (!marks.foodFacts && !marks.ai) Icon(Icons.Rounded.Edit, "Added by hand", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}

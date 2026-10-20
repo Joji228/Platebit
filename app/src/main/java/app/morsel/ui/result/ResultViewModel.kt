@@ -3,6 +3,7 @@ package app.morsel.ui.result
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.morsel.AppContainer
+import app.morsel.data.FoodSource
 import app.morsel.data.FoodFact
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
@@ -161,7 +162,7 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                 mealType = s.mealType.name,
                 name = s.name.ifBlank { s.items.firstOrNull()?.name ?: "Meal" },
                 photoPath = photo,
-                source = s.source,
+                source = FoodSource.withFoodFacts(s.source, s.items.any { it.foodFacts != null }),
                 note = s.note,
             )
             val items = s.items.filter { it.grams > 0 }.map {

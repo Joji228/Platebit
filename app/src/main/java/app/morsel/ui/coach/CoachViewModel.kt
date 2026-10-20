@@ -16,6 +16,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import app.morsel.data.EntryTime
+import app.morsel.data.FoodSource
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
 import app.morsel.data.db.macros
@@ -208,7 +209,7 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
                 val time = EntryTime.meal(type)
                 val name = a.name ?: a.foods.first().name
                 app.repository.saveMeal(
-                    MealEntity(date = date.toString(), timestamp = stamp(time), mealType = type.name, name = name, source = "AI coach"),
+                    MealEntity(date = date.toString(), timestamp = stamp(time), mealType = type.name, name = name, source = FoodSource.withFoodFacts(FoodSource.COACH, a.foods.any { it.offCode != null })),
                     a.foods.map { FoodItemEntity(mealId = 0, name = it.name, grams = it.grams, kcalPer100 = it.kcalPer100, proteinPer100 = it.proteinPer100, carbsPer100 = it.carbsPer100, fatPer100 = it.fatPer100) },
                 )
                 "Logged ${type.title.lowercase()}: $name · ${a.macros.kcal.roundToInt()} kcal"

@@ -10,6 +10,7 @@ import app.morsel.domain.MealType
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
 import app.morsel.data.EntryTime
+import app.morsel.data.FoodSource
 import app.morsel.data.FoodFact
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -117,7 +118,7 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
      */
     fun manualLog(name: String, kcal: Double, protein: Double, carbs: Double, fat: Double, type: MealType, date: LocalDate) {
         logMeal(
-            date, type, name, "Added by hand",
+            date, type, name, FoodSource.BY_HAND,
             FoodItemEntity(mealId = 0, name = name, grams = 100.0, kcalPer100 = kcal, proteinPer100 = protein, carbsPer100 = carbs, fatPer100 = fat),
         )
     }
