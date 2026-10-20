@@ -27,10 +27,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -121,7 +121,8 @@ fun CoachContent(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RoundIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+            // The chat slides down from the top, so it closes upwards.
+            RoundIconButton(Icons.Rounded.KeyboardArrowUp, "Close", onBack)
             Spacer(Modifier.width(14.dp))
             Text("Coach", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.width(10.dp))

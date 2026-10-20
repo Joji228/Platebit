@@ -58,6 +58,7 @@ class SettingsRepository(context: Context) {
     private val thinkingKey = stringPreferencesKey("deepseek_thinking")
     private val foodFactsKey = booleanPreferencesKey("use_food_facts")
     private val coachKey = booleanPreferencesKey("coach_enabled")
+    private val coachTutorialKey = booleanPreferencesKey("coach_tutorial_done")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
     private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
 
@@ -86,6 +87,9 @@ class SettingsRepository(context: Context) {
      * until they turn it on. Deliberately not carried in backups: a restored phone asks again.
      */
     val coachEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[coachKey] ?: false }.distinctUntilChanged()
+
+    /** False until the user has pulled the coach down once after turning it on (the hint shows until then). */
+    val coachTutorialDone: Flow<Boolean> = store.data.map { prefs -> prefs[coachTutorialKey] ?: false }.distinctUntilChanged()
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
@@ -206,8 +210,16 @@ class SettingsRepository(context: Context) {
         store.edit { it[foodFactsKey] = enabled }
     }
 
+    /** Turning the coach on also brings back its one-time "pull down" hint. */
     suspend fun setCoachEnabled(enabled: Boolean) {
-        store.edit { it[coachKey] = enabled }
+        store.edit {
+            it[coachKey] = enabled
+            if (enabled) it[coachTutorialKey] = false
+        }
+    }
+
+    suspend fun setCoachTutorialDone() {
+        store.edit { it[coachTutorialKey] = true }
     }
 
     suspend fun setPrimary(provider: Provider) {

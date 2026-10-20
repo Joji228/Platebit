@@ -29,6 +29,10 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
     private var job: Job? = null
 
     init {
+        // Turned off (or everything erased) while this chat is alive: its file is gone, so forget it here too.
+        viewModelScope.launch {
+            app.settings.coachEnabled.collect { on -> if (!on) newChat() }
+        }
         viewModelScope.launch {
             messages.value = app.coach.load()
             loaded.value = true

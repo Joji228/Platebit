@@ -78,8 +78,20 @@ import app.morsel.ui.body.BodyScreen
 import app.morsel.ui.scale.AutoWeighIn
 import app.morsel.ui.scan.HardwareShutter
 import app.morsel.ui.body.BodyViewModel
+import app.morsel.ui.coach.CoachHint
+import app.morsel.ui.coach.CoachPullBubble
 import app.morsel.ui.coach.CoachScreen
 import app.morsel.ui.coach.CoachViewModel
+import app.morsel.ui.coach.coachArmTick
+import app.morsel.ui.coach.coachPopTap
+import app.morsel.ui.coach.coachPull
+import app.morsel.ui.coach.rememberCoachPull
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
 import app.morsel.ui.onboarding.OnboardingScreen
@@ -102,7 +114,6 @@ import kotlinx.serialization.Serializable
 @Serializable object AiSettingsRoute
 @Serializable data class OnboardingRoute(val edit: Boolean = false)
 @Serializable object BodyRoute
-@Serializable object CoachRoute
 
 class MainActivity : ComponentActivity() {
     private var ready = false
@@ -179,128 +190,170 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
     val onToday = destination?.hasRoute<TodayRoute>() == true
     val onScan = destination?.hasRoute<ScanRoute>() == true
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0),
-        bottomBar = {
-            AnimatedVisibility(
-                visible = onToday || onScan,
-                enter = slideInVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeIn(tween(MOTION_MS)),
-                exit = slideOutVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeOut(tween(MOTION_MS)),
-            ) {
-                BottomBar(
-                    scanSelected = onScan,
-                    onToday = { nav.switchTab(TodayRoute) },
-                    onScan = { nav.switchTab(ScanRoute) },
-                )
-            }
-        },
-    ) { _ ->
-        // The bar floats over the tab screens, which reserve a fixed space for it; padding the
-        // whole NavHost instead would make pushed pages jump while the bar animates away.
-        val barSpace = BAR_HEIGHT + 0.5.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        NavHost(
-            navController = nav,
-            startDestination = start,
-            // iOS-style push/pop: the new page slides over, the old one drifts aside and dims.
-            // Tabs slide side by side like pages. Everything moves horizontally, nothing scales,
-            // and every transition shares one duration and curve so they all feel alike.
-            enterTransition = { if (isTabSwitch()) tabEnter() else pushEnter() },
-            exitTransition = { if (isTabSwitch()) tabExit() else pushExit() },
-            popEnterTransition = { if (isTabSwitch()) tabEnter() else popEnter() },
-            popExitTransition = { if (isTabSwitch()) tabExit() else popExit() },
-            // The back swipe gesture uses these instead of the pop ones. It plays the exact same
-            // animation as the matching button press, so Scan → Today swipes like a tab and
-            // every other screen slides away left to right. Linear timing keeps the page locked
-            // to the finger; letting go finishes the slide.
-            predictivePopEnterTransition = { _ -> if (isTabSwitch()) tabEnter(GestureSpec) else popEnter(GestureSpec) },
-            predictivePopExitTransition = { _ -> if (isTabSwitch()) tabExit(GestureSpec) else popExit(GestureSpec) },
-        ) {
-            composable<TodayRoute> {
-                Screen(bottom = barSpace) {
-                    val vm = viewModel { DashboardViewModel(container) }
-                    DashboardScreen(
-                        viewModel = vm,
+    // The AI coach (beta): pulled down from the top of any screen except Settings and setup.
+    val coachOn by container.settings.coachEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val coachTutorialDone by container.settings.coachTutorialDone.collectAsStateWithLifecycle(initialValue = true)
+    var coachOpen by rememberSaveable { mutableStateOf(false) }
+    val coachHere = onToday || onScan || destination?.hasRoute<BodyRoute>() == true || destination?.hasRoute<ResultRoute>() == true
+    LaunchedEffect(coachOn) { if (!coachOn) coachOpen = false }
+    val pull = rememberCoachPull()
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .coachPull(
+                pull,
+                enabled = coachOn && coachHere && !coachOpen,
+                onArm = { view.coachArmTick() },
+                onPop = {
+                    view.coachPopTap()
+                    // A beat for the pop to show before the chat slides down over it.
+                    scope.launch {
+                        delay(90)
+                        coachOpen = true
+                    }
+                    if (!coachTutorialDone) scope.launch { container.settings.setCoachTutorialDone() }
+                },
+            ),
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets(0),
+            bottomBar = {
+                AnimatedVisibility(
+                    visible = onToday || onScan,
+                    enter = slideInVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeIn(tween(MOTION_MS)),
+                    exit = slideOutVertically(tween(MOTION_MS, easing = MotionEasing)) { it } + fadeOut(tween(MOTION_MS)),
+                ) {
+                    BottomBar(
+                        scanSelected = onScan,
+                        onToday = { nav.switchTab(TodayRoute) },
                         onScan = { nav.switchTab(ScanRoute) },
-                        onOpenMeal = { nav.navigate(ResultRoute(it)) },
-                        onSettings = { nav.navigate(SettingsRoute) },
-                        onOpenBody = { nav.navigate(BodyRoute) },
-                        onOpenCoach = { nav.navigate(CoachRoute) },
                     )
                 }
-            }
-            composable<BodyRoute> {
-                Screen {
-                    val vm = viewModel { BodyViewModel(container) }
-                    BodyScreen(vm, onBack = { nav.popBackStack() })
+            },
+        ) { _ ->
+            // The bar floats over the tab screens, which reserve a fixed space for it; padding the
+            // whole NavHost instead would make pushed pages jump while the bar animates away.
+            val barSpace = BAR_HEIGHT + 0.5.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            NavHost(
+                navController = nav,
+                startDestination = start,
+                // iOS-style push/pop: the new page slides over, the old one drifts aside and dims.
+                // Tabs slide side by side like pages. Everything moves horizontally, nothing scales,
+                // and every transition shares one duration and curve so they all feel alike.
+                enterTransition = { if (isTabSwitch()) tabEnter() else pushEnter() },
+                exitTransition = { if (isTabSwitch()) tabExit() else pushExit() },
+                popEnterTransition = { if (isTabSwitch()) tabEnter() else popEnter() },
+                popExitTransition = { if (isTabSwitch()) tabExit() else popExit() },
+                // The back swipe gesture uses these instead of the pop ones. It plays the exact same
+                // animation as the matching button press, so Scan → Today swipes like a tab and
+                // every other screen slides away left to right. Linear timing keeps the page locked
+                // to the finger; letting go finishes the slide.
+                predictivePopEnterTransition = { _ -> if (isTabSwitch()) tabEnter(GestureSpec) else popEnter(GestureSpec) },
+                predictivePopExitTransition = { _ -> if (isTabSwitch()) tabExit(GestureSpec) else popExit(GestureSpec) },
+            ) {
+                composable<TodayRoute> {
+                    Screen(bottom = barSpace) {
+                        val vm = viewModel { DashboardViewModel(container) }
+                        DashboardScreen(
+                            viewModel = vm,
+                            onScan = { nav.switchTab(ScanRoute) },
+                            onOpenMeal = { nav.navigate(ResultRoute(it)) },
+                            onSettings = { nav.navigate(SettingsRoute) },
+                            onOpenBody = { nav.navigate(BodyRoute) },
+                        )
+                    }
+                }
+                composable<BodyRoute> {
+                    Screen {
+                        val vm = viewModel { BodyViewModel(container) }
+                        BodyScreen(vm, onBack = { nav.popBackStack() })
+                    }
+                }
+                composable<ScanRoute> {
+                    Screen(bottom = barSpace) {
+                        val vm = viewModel { ScanViewModel(container) }
+                        ScanScreen(vm, onResult = { nav.navigate(ResultRoute()) }, onToday = { nav.switchTab(TodayRoute) })
+                    }
+                }
+                composable<ResultRoute> { backStack ->
+                    val route = backStack.toRoute<ResultRoute>()
+                    Screen {
+                        val vm = viewModel { ResultViewModel(container, route.mealId) }
+                        ResultScreen(
+                            viewModel = vm,
+                            onClose = { nav.popBackStack() },
+                            onSaved = {
+                                // Pop back so the dashboard slides in from behind, like closing a sheet.
+                                if (!nav.popBackStack<TodayRoute>(inclusive = false)) {
+                                    nav.navigate(TodayRoute) { popUpTo(0) { inclusive = true } }
+                                }
+                            },
+                        )
+                    }
+                }
+                composable<SettingsRoute> {
+                    Screen {
+                        val vm = viewModel { SettingsViewModel(container) }
+                        SettingsScreen(
+                            viewModel = vm,
+                            onBack = { nav.popBackStack() },
+                            onEditProfile = { nav.navigate(OnboardingRoute(edit = true)) },
+                            onAiEngine = { nav.navigate(AiSettingsRoute) },
+                            onReset = { nav.navigate(OnboardingRoute()) { popUpTo(0) { inclusive = true } } },
+                        )
+                    }
+                }
+                composable<AiSettingsRoute> {
+                    Screen {
+                        val vm = viewModel { SettingsViewModel(container) }
+                        AiSettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
+                    }
+                }
+                composable<OnboardingRoute> { backStack ->
+                    val route = backStack.toRoute<OnboardingRoute>()
+                    Screen {
+                        val vm = viewModel { OnboardingViewModel(container, route.edit) }
+                        OnboardingScreen(
+                            viewModel = vm,
+                            onDone = {
+                                if (route.edit) {
+                                    nav.popBackStack()
+                                } else {
+                                    nav.navigate(TodayRoute) { popUpTo(0) { inclusive = true } }
+                                }
+                            },
+                            onExit = { if (route.edit) nav.popBackStack() },
+                        )
+                    }
                 }
             }
-            composable<CoachRoute> {
-                Screen {
-                    val vm = viewModel { CoachViewModel(container) }
-                    CoachScreen(vm, onBack = { nav.popBackStack() })
-                }
-            }
-            composable<ScanRoute> {
-                Screen(bottom = barSpace) {
-                    val vm = viewModel { ScanViewModel(container) }
-                    ScanScreen(vm, onResult = { nav.navigate(ResultRoute()) }, onToday = { nav.switchTab(TodayRoute) })
-                }
-            }
-            composable<ResultRoute> { backStack ->
-                val route = backStack.toRoute<ResultRoute>()
-                Screen {
-                    val vm = viewModel { ResultViewModel(container, route.mealId) }
-                    ResultScreen(
-                        viewModel = vm,
-                        onClose = { nav.popBackStack() },
-                        onSaved = {
-                            // Pop back so the dashboard slides in from behind, like closing a sheet.
-                            if (!nav.popBackStack<TodayRoute>(inclusive = false)) {
-                                nav.navigate(TodayRoute) { popUpTo(0) { inclusive = true } }
-                            }
-                        },
-                    )
-                }
-            }
-            composable<SettingsRoute> {
-                Screen {
-                    val vm = viewModel { SettingsViewModel(container) }
-                    SettingsScreen(
-                        viewModel = vm,
-                        onBack = { nav.popBackStack() },
-                        onEditProfile = { nav.navigate(OnboardingRoute(edit = true)) },
-                        onAiEngine = { nav.navigate(AiSettingsRoute) },
-                        onReset = { nav.navigate(OnboardingRoute()) { popUpTo(0) { inclusive = true } } },
-                    )
-                }
-            }
-            composable<AiSettingsRoute> {
-                Screen {
-                    val vm = viewModel { SettingsViewModel(container) }
-                    AiSettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
-                }
-            }
-            composable<OnboardingRoute> { backStack ->
-                val route = backStack.toRoute<OnboardingRoute>()
-                Screen {
-                    val vm = viewModel { OnboardingViewModel(container, route.edit) }
-                    OnboardingScreen(
-                        viewModel = vm,
-                        onDone = {
-                            if (route.edit) {
-                                nav.popBackStack()
-                            } else {
-                                nav.navigate(TodayRoute) { popUpTo(0) { inclusive = true } }
-                            }
-                        },
-                        onExit = { if (route.edit) nav.popBackStack() },
-                    )
-                }
+            // Drawn over every screen: the smart scale's live weight and saved weigh-ins.
+            AutoWeighIn(container, onOpenBody = { nav.navigate(BodyRoute) { launchSingleTop = true } })
+        }
+
+        if (coachOn && !coachTutorialDone && coachHere && !coachOpen && !pull.popped) {
+            CoachHint(onSkip = { scope.launch { container.settings.setCoachTutorialDone() } })
+        }
+        AnimatedVisibility(
+            visible = coachOpen,
+            enter = slideInVertically(tween(340, easing = MotionEasing)) { -it } + fadeIn(tween(200)),
+            exit = slideOutVertically(tween(MOTION_MS, easing = MotionEasing)) { -it } + fadeOut(tween(MOTION_MS)),
+        ) {
+            BackHandler { coachOpen = false }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                val vm = viewModel { CoachViewModel(container) }
+                CoachScreen(vm, onBack = { coachOpen = false })
             }
         }
-        // Drawn over every screen: the smart scale's live weight and saved weigh-ins.
-        AutoWeighIn(container, onOpenBody = { nav.navigate(BodyRoute) { launchSingleTop = true } })
+        CoachPullBubble(pull, Modifier.align(Alignment.TopCenter))
     }
 }
 

@@ -357,7 +357,7 @@ fun SettingsScreen(
                             SwitchRow(
                                 title = "AI coach",
                                 subtitle = if (coachOn) {
-                                    "On. Tap the sparkle on Today to ask how you're doing"
+                                    "On. Pull down on any screen and hold to open it"
                                 } else {
                                     "A chat that sees your meals, water, weigh-ins and body composition and explains how you're doing. Uses your AI engine"
                                 },
@@ -521,6 +521,7 @@ fun SettingsScreen(
                         "Each question sends a summary of your data to your AI engine (${state.ai.primary.title}): your profile " +
                         "(sex, age, height and goals), daily totals, recent meals, water, weigh-ins and body composition. " +
                         "Photos and API keys are never sent.\n\n" +
+                        "To open it, pull down on any screen (except Settings) and hold for a moment.\n\n" +
                         "It's a beta. Answers are general guidance, not medical advice.",
                 )
             },
