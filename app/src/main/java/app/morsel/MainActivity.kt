@@ -78,6 +78,8 @@ import app.morsel.ui.body.BodyScreen
 import app.morsel.ui.scale.AutoWeighIn
 import app.morsel.ui.scan.HardwareShutter
 import app.morsel.ui.body.BodyViewModel
+import app.morsel.ui.coach.CoachScreen
+import app.morsel.ui.coach.CoachViewModel
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
 import app.morsel.ui.onboarding.OnboardingScreen
@@ -100,6 +102,7 @@ import kotlinx.serialization.Serializable
 @Serializable object AiSettingsRoute
 @Serializable data class OnboardingRoute(val edit: Boolean = false)
 @Serializable object BodyRoute
+@Serializable object CoachRoute
 
 class MainActivity : ComponentActivity() {
     private var ready = false
@@ -222,6 +225,7 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                         onOpenMeal = { nav.navigate(ResultRoute(it)) },
                         onSettings = { nav.navigate(SettingsRoute) },
                         onOpenBody = { nav.navigate(BodyRoute) },
+                        onOpenCoach = { nav.navigate(CoachRoute) },
                     )
                 }
             }
@@ -229,6 +233,12 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                 Screen {
                     val vm = viewModel { BodyViewModel(container) }
                     BodyScreen(vm, onBack = { nav.popBackStack() })
+                }
+            }
+            composable<CoachRoute> {
+                Screen {
+                    val vm = viewModel { CoachViewModel(container) }
+                    CoachScreen(vm, onBack = { nav.popBackStack() })
                 }
             }
             composable<ScanRoute> {

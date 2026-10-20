@@ -3,6 +3,7 @@ package app.morsel.ai
 import android.util.Base64
 import app.morsel.data.AiSettings
 import app.morsel.data.ApiKind
+import app.morsel.data.CoachMessage
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
 import app.morsel.data.SettingsRepository
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -74,6 +76,9 @@ data class AnalysisResult(
 )
 
 class AiException(message: String) : Exception(message)
+
+/** The coach's answer and which engine gave it. */
+data class CoachReply(val text: String, val provider: Provider, val model: String)
 
 private const val ANTHROPIC_VERSION = "2023-06-01"
 
@@ -143,6 +148,91 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
             }
         }
         throw AiException(errors.joinToString("\n"))
+    }
+
+    /**
+     * One answer from the AI coach. [context] is the user's data (see CoachContext), [messages]
+     * the conversation so far, ending with the user's question. Uses the same engine, model,
+     * DeepSeek thinking level and backup engine as meal scans.
+     */
+    suspend fun chat(context: String, messages: List<CoachMessage>): CoachReply {
+        val history = CoachRequests.history(messages)
+        if (history.isEmpty() || !history.last().fromUser) throw AiException("Ask the coach something first")
+        val ai = settings.ai.first()
+        val errors = mutableListOf<String>()
+        if (!ai.isReady(ai.primary)) {
+            val missing = if (ai.primary.needsBaseUrl && ai.keyFor(ai.primary).isNotBlank()) "address" else "API key"
+            errors += "${ai.primary.title}: no $missing set. Add it in Settings → AI engine."
+        }
+        val usable = listOfNotNull(ai.primary, ai.fallbackTarget).filter { ai.isReady(it) }
+        if (usable.isEmpty()) throw AiException(errors.joinToString("\n"))
+        val system = CoachPrompt.system(context)
+        for (provider in usable) {
+            try {
+                val model = resolveModel(provider, ai)
+                return CoachReply(coachComplete(provider, ai, model, system, history), provider, model)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errors += "${provider.title}: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+        throw AiException(errors.joinToString("\n"))
+    }
+
+    private suspend fun coachComplete(
+        provider: Provider,
+        ai: AiSettings,
+        model: String,
+        system: String,
+        history: List<CoachMessage>,
+    ): String = withContext(Dispatchers.IO) {
+        val key = ai.keyFor(provider)
+        if (provider.needsBaseUrl) UrlPolicy.problem(ai.baseUrlFor(provider))?.let { throw AiException(it) }
+        val text = when (provider.kind) {
+            ApiKind.ANTHROPIC -> {
+                val root = post(
+                    "https://api.anthropic.com/v1/messages",
+                    mapOf("x-api-key" to key, "anthropic-version" to ANTHROPIC_VERSION),
+                    CoachRequests.anthropic(model, system, history),
+                    provider,
+                )
+                root["content"]?.jsonArray.orEmpty()
+                    .filter { it.jsonObject["type"]?.jsonPrimitive?.contentOrNull == "text" }
+                    .joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty() }
+            }
+            ApiKind.GEMINI -> {
+                val root = post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/${model.removePrefix("models/")}:generateContent",
+                    mapOf("x-goog-api-key" to key),
+                    CoachRequests.gemini(system, history),
+                    provider,
+                )
+                root["candidates"]?.jsonArray?.firstOrNull()?.jsonObject
+                    ?.get("content")?.jsonObject?.get("parts")?.jsonArray.orEmpty()
+                    // Thinking models can return their reasoning as separate parts; only the answer is shown.
+                    .filter { it.jsonObject["thought"]?.jsonPrimitive?.booleanOrNull != true }
+                    .joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty() }
+            }
+            ApiKind.OPENAI_COMPATIBLE -> {
+                val url = "${ai.baseUrlFor(provider)}/chat/completions"
+                val headers = mapOf("Authorization" to "Bearer $key")
+                val thinking = ai.thinkingFor(provider)
+                val root = try {
+                    post(url, headers, CoachRequests.openAiCompatible(provider, model, system, history, thinking), provider)
+                } catch (e: HttpException) {
+                    // Some models reject a custom temperature; ask once more without it.
+                    if (e.code == 400 || e.code == 422) {
+                        post(url, headers, CoachRequests.openAiCompatible(provider, model, system, history, thinking, plain = true), provider)
+                    } else {
+                        throw e
+                    }
+                }
+                root["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                    ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull.orEmpty()
+            }
+        }
+        text.trim().ifBlank { throw AiException("${provider.title} returned no answer") }
     }
 
     /** Lists models the key can use. Doubles as a key check. */

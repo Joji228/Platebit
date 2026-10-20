@@ -6,6 +6,7 @@ import androidx.room.Room
 import app.morsel.ai.AiService
 import app.morsel.ai.AnalysisResult
 import app.morsel.ble.MiScaleScanner
+import app.morsel.data.CoachStore
 import app.morsel.data.DayClock
 import app.morsel.data.MorselRepository
 import app.morsel.data.PhotoStore
@@ -58,6 +59,8 @@ class AppContainer(context: Context) {
 
     /** The free Open Food Facts product database; only used when turned on in Settings. */
     val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1", http)
+    /** The AI coach's current conversation (beta, off by default). */
+    val coach = CoachStore(File(context.filesDir, "coach"))
     var draft: MealDraft? = null
 
     /** The day the dashboard is showing. Water taps go to it; scanned meals always go to today. */

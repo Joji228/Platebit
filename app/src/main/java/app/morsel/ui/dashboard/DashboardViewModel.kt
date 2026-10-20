@@ -88,6 +88,9 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
     /** Quick add is offered only to users who turned on Open Food Facts. */
     val foodFactsEnabled = app.settings.useFoodFacts
 
+    /** The AI coach (beta) only shows its button once turned on in Settings. */
+    val coachEnabled = app.settings.coachEnabled
+
     suspend fun searchFoods(query: String): List<FoodFact> = app.foodFacts.search(query)
 
     /** Logs one Open Food Facts product as its own meal, for today like every new meal. */

@@ -57,6 +57,7 @@ class SettingsRepository(context: Context) {
     private val enginesKey = stringPreferencesKey("ai_engines")
     private val thinkingKey = stringPreferencesKey("deepseek_thinking")
     private val foodFactsKey = booleanPreferencesKey("use_food_facts")
+    private val coachKey = booleanPreferencesKey("coach_enabled")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
     private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
 
@@ -79,6 +80,12 @@ class SettingsRepository(context: Context) {
 
     /** Open Food Facts lookups: on unless the user turns them off (since 1.1.7). */
     val useFoodFacts: Flow<Boolean> = store.data.map { prefs -> prefs[foodFactsKey] ?: true }
+
+    /**
+     * The AI coach (beta) sends a summary of the user's data to their AI engine, so it stays off
+     * until they turn it on. Deliberately not carried in backups: a restored phone asks again.
+     */
+    val coachEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[coachKey] ?: false }.distinctUntilChanged()
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
@@ -197,6 +204,10 @@ class SettingsRepository(context: Context) {
 
     suspend fun setUseFoodFacts(enabled: Boolean) {
         store.edit { it[foodFactsKey] = enabled }
+    }
+
+    suspend fun setCoachEnabled(enabled: Boolean) {
+        store.edit { it[coachKey] = enabled }
     }
 
     suspend fun setPrimary(provider: Provider) {

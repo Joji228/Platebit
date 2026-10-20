@@ -81,6 +81,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.Manifest
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
@@ -117,6 +118,7 @@ fun SettingsScreen(
     var waterDialog by remember { mutableStateOf(false) }
     var resetDialog by remember { mutableStateOf(false) }
     var scaleConfirm by remember { mutableStateOf(false) }
+    var coachConfirm by remember { mutableStateOf(false) }
     // Hands-free weigh-ins need the Bluetooth scan permission; asked right when the scale is turned on.
     val askBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val scaleContext = LocalContext.current
@@ -346,6 +348,29 @@ fun SettingsScreen(
                 )
             }
 
+            item { GroupLabel("AI coach · Beta") }
+            item {
+                val coachOn by viewModel.coachEnabled.collectAsStateWithLifecycle(initialValue = false)
+                GroupedList(
+                    rows = listOf(
+                        {
+                            SwitchRow(
+                                title = "AI coach",
+                                subtitle = if (coachOn) {
+                                    "On. Tap the sparkle on Today to ask how you're doing"
+                                } else {
+                                    "A chat that sees your meals, water, weigh-ins and body composition and explains how you're doing. Uses your AI engine"
+                                },
+                                checked = coachOn,
+                                // Turning it on asks first, since it sends your data to the AI engine; off needs no question.
+                                onChange = { on -> if (on) coachConfirm = true else viewModel.setCoachEnabled(false) },
+                                icon = Icons.Rounded.Forum,
+                            )
+                        },
+                    ),
+                )
+            }
+
             item { GroupLabel("Danger zone") }
             item {
                 GroupedList(
@@ -483,6 +508,29 @@ fun SettingsScreen(
                 }) { Text("Turn on") }
             },
             dismissButton = { TextButton(onClick = { scaleConfirm = false }) { Text("Cancel") } },
+        )
+    }
+    if (coachConfirm) {
+        AlertDialog(
+            onDismissRequest = { coachConfirm = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Turn on the AI coach?") },
+            text = {
+                Text(
+                    "The coach is a chat that answers questions about your progress from your own data.\n\n" +
+                        "Each question sends a summary of your data to your AI engine (${state.ai.primary.title}): your profile " +
+                        "(sex, age, height and goals), daily totals, recent meals, water, weigh-ins and body composition. " +
+                        "Photos and API keys are never sent.\n\n" +
+                        "It's a beta. Answers are general guidance, not medical advice.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setCoachEnabled(true)
+                    coachConfirm = false
+                }) { Text("Turn on") }
+            },
+            dismissButton = { TextButton(onClick = { coachConfirm = false }) { Text("Cancel") } },
         )
     }
     if (resetDialog) {

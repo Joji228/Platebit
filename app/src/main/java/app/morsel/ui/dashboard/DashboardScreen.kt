@@ -54,6 +54,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -90,6 +92,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
@@ -200,10 +203,12 @@ fun DashboardScreen(
     onOpenMeal: (Long) -> Unit,
     onSettings: () -> Unit,
     onOpenBody: () -> Unit,
+    onOpenCoach: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scaleEnabled by viewModel.scaleEnabled.collectAsStateWithLifecycle(initialValue = false)
     val foodFactsOn by viewModel.foodFactsEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val coachOn by viewModel.coachEnabled.collectAsStateWithLifecycle(initialValue = false)
     var showQuickAdd by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var showWeightDialog by remember { mutableStateOf(false) }
@@ -246,6 +251,7 @@ fun DashboardScreen(
                     onNext = { swipe.go(1) },
                     onSettings = onSettings,
                     onQuickAdd = if (foodFactsOn) ({ showQuickAdd = true }) else null,
+                    onCoach = if (coachOn) onOpenCoach else null,
                 )
             }
             // Until the first real numbers arrive, show nothing rather than placeholder targets.
@@ -344,7 +350,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit, onQuickAdd: (() -> Unit)?) {
+private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit, onQuickAdd: (() -> Unit)?, onCoach: (() -> Unit)?) {
     val title = when (date) {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
@@ -363,7 +369,15 @@ private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.headlineMedium)
+                // Shrinks to fit when the header also carries the Quick add and coach buttons, so the
+                // day arrows are never pushed off on a narrow phone.
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 18.sp, maxFontSize = MaterialTheme.typography.headlineMedium.fontSize),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 Spacer(Modifier.width(8.dp))
                 IconButton(onClick = onPrev, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Rounded.ChevronLeft, "Previous day", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -376,6 +390,10 @@ private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext
                     )
                 }
             }
+        }
+        onCoach?.let {
+            RoundIconButton(Icons.Rounded.AutoAwesome, "AI coach", it, size = 44.dp, content = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(8.dp))
         }
         onQuickAdd?.let {
             RoundIconButton(Icons.Rounded.Add, "Quick add a food", it, size = 44.dp)

@@ -102,6 +102,14 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
 
     fun setUseFoodFacts(enabled: Boolean) = viewModelScope.launch { app.settings.setUseFoodFacts(enabled) }
 
+    val coachEnabled = app.settings.coachEnabled
+
+    /** Turning the coach off also deletes its conversation. */
+    fun setCoachEnabled(enabled: Boolean) = viewModelScope.launch {
+        app.settings.setCoachEnabled(enabled)
+        if (!enabled) app.coach.clear()
+    }
+
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
 
     fun setDeepseekThinking(level: ThinkingLevel) = viewModelScope.launch { app.settings.setDeepseekThinking(level) }
@@ -142,6 +150,7 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
         viewModelScope.launch {
             app.repository.restore(Backup())
             app.photos.deleteAll()
+            app.coach.clear()
             app.settings.clear(keepKeys)
             app.draft = null
             onDone()
