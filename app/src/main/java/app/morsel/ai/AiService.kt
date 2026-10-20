@@ -4,6 +4,7 @@ import android.util.Base64
 import app.morsel.data.AiSettings
 import app.morsel.data.ApiKind
 import app.morsel.data.Provider
+import app.morsel.data.ThinkingLevel
 import app.morsel.data.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -225,11 +226,11 @@ class AiService(private val settings: SettingsRepository) {
             ApiKind.GEMINI -> gemini(key, model, encoded, userText)
             ApiKind.ANTHROPIC -> anthropic(provider, key, model, encoded, userText)
             ApiKind.OPENAI_COMPATIBLE -> try {
-                openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = true)
+                openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = true, thinking = ai.thinkingFor(provider))
             } catch (e: HttpException) {
                 // Some models reject response_format or a custom temperature; retry once without them.
                 if (e.code == 400 || e.code == 422) {
-                    openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = false)
+                    openAiCompatible(provider, ai.baseUrlFor(provider), key, model, encoded, userText, strict = false, thinking = ai.thinkingFor(provider))
                 } else {
                     throw e
                 }
@@ -328,9 +329,15 @@ class AiService(private val settings: SettingsRepository) {
         images: List<String>,
         userText: String,
         strict: Boolean,
+        /** DeepSeek only: turns its thinking off or sets how hard it thinks. */
+        thinking: ThinkingLevel? = null,
     ): String {
         val body = buildJsonObject {
             put("model", model)
+            if (thinking != null) {
+                putJsonObject("thinking") { put("type", if (thinking.api == null) "disabled" else "enabled") }
+                thinking.api?.let { put("reasoning_effort", it) }
+            }
             putJsonArray("messages") {
                 addJsonObject {
                     put("role", "system")

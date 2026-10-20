@@ -49,7 +49,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Screenshot
 import androidx.compose.foundation.verticalScroll
 import android.widget.Toast
 import androidx.compose.foundation.rememberScrollState
@@ -164,8 +164,8 @@ fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
             Text("Body", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             if (state.latest != null) {
                 RoundIconButton(
-                    Icons.Rounded.Share,
-                    "Save the whole page to the gallery",
+                    Icons.Rounded.Screenshot,
+                    "Save a screenshot of the whole page to the gallery",
                     {
                         if (!saving) {
                             saving = true

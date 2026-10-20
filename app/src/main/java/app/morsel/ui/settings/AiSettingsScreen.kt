@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.AiSettings
 import app.morsel.data.Provider
+import app.morsel.data.ThinkingLevel
+import androidx.compose.material.icons.rounded.Psychology
 import app.morsel.ui.components.GroupedList
 import app.morsel.ui.components.ListRow
 import app.morsel.ui.components.RoundIconButton
@@ -80,6 +82,7 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     var modelDialog by remember { mutableStateOf<Provider?>(null) }
     var backupPicker by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<Provider?>(null) }
+    var thinkingDialog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -123,8 +126,8 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
             items(ai.activeEngines, key = { it.name }) { provider ->
                 GroupedList(
-                    rows = listOf(
-                        {
+                    rows = buildList<@Composable () -> Unit> {
+                        add {
                             EngineHeader(
                                 provider = provider,
                                 ai = ai,
@@ -132,10 +135,21 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                                 onChange = { viewModel.changeEngine(provider, it) },
                                 onRemove = if (ai.activeEngines.size > 1) ({ removing = provider }) else null,
                             )
-                        },
-                        { KeyRow(provider, ai, onClick = { keyDialog = provider }) },
-                        { ModelRow(provider, ai, onClick = { modelDialog = provider }) },
-                    ),
+                        }
+                        add { KeyRow(provider, ai, onClick = { keyDialog = provider }) }
+                        add { ModelRow(provider, ai, onClick = { modelDialog = provider }) }
+                        if (provider == Provider.DEEPSEEK) {
+                            add {
+                                ListRow(
+                                    "Thinking",
+                                    subtitle = "${ai.deepseekThinking.title} · ${ai.deepseekThinking.about}",
+                                    icon = Icons.Rounded.Psychology,
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = { thinkingDialog = true },
+                                )
+                            }
+                        }
+                    },
                 )
             }
             if (!ai.isReady(ai.primary)) {
@@ -229,6 +243,43 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 backupPicker = false
             },
             onDismiss = { backupPicker = false },
+        )
+    }
+    if (thinkingDialog) {
+        AlertDialog(
+            onDismissRequest = { thinkingDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("DeepSeek thinking") },
+            text = {
+                Column {
+                    Text(
+                        "How long DeepSeek reasons before answering. Off or Low is usually plenty for reading a meal and makes scans faster.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ThinkingLevel.entries.forEach { level ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setDeepseekThinking(level)
+                                    thinkingDialog = false
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = level == ai.deepseekThinking, onClick = null)
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(level.title, style = MaterialTheme.typography.bodyLarge)
+                                Text(level.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { thinkingDialog = false }) { Text("Close") } },
         )
     }
     removing?.let { provider ->

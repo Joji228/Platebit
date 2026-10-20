@@ -38,6 +38,17 @@ enum class Provider(
     val byline: String? get() = company.takeIf { it != title }
 }
 
+/**
+ * How long DeepSeek reasons before answering. Its API thinks at High unless told otherwise;
+ * [api] is the reasoning_effort sent, null for thinking turned off.
+ */
+enum class ThinkingLevel(val title: String, val api: String?, val about: String) {
+    OFF("Off", null, "Answers right away. Fastest and cheapest"),
+    LOW("Low", "low", "A short think first. Quick, a bit more careful"),
+    HIGH("High", "high", "DeepSeek's default. Slower, more careful"),
+    MAX("Max", "max", "Thinks the longest. Slowest and most expensive"),
+}
+
 enum class ThemeMode(val title: String) { DARK("Dark"), LIGHT("Light"), SYSTEM("System") }
 
 data class AiSettings(
@@ -55,6 +66,8 @@ data class AiSettings(
      * first edited; [activeEngines] then falls back to the engines that already have a key.
      */
     val engines: List<Provider> = emptyList(),
+    /** DeepSeek's thinking; High is what its API does when nothing is sent, so it stays the default. */
+    val deepseekThinking: ThinkingLevel = ThinkingLevel.HIGH,
 ) {
     /** What the AI engine screen shows: always includes [primary], never more than [MAX_ENGINES]. */
     val activeEngines: List<Provider>
@@ -69,6 +82,9 @@ data class AiSettings(
     fun keyFor(provider: Provider) = keys[provider].orEmpty()
 
     fun modelFor(provider: Provider) = models[provider].orEmpty()
+
+    /** The thinking setting sent with a request; only DeepSeek has one. */
+    fun thinkingFor(provider: Provider) = deepseekThinking.takeIf { provider == Provider.DEEPSEEK }
 
     fun baseUrlFor(provider: Provider) = provider.baseUrl ?: customBaseUrl.trim().trimEnd('/')
 

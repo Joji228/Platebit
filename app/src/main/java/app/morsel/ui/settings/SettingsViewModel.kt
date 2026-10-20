@@ -11,6 +11,7 @@ import app.morsel.data.Provider
 import app.morsel.data.StorageInfo
 import app.morsel.data.formatBytes
 import app.morsel.data.ThemeMode
+import app.morsel.data.ThinkingLevel
 import app.morsel.domain.AdaptiveEstimate
 import app.morsel.domain.Targets
 import app.morsel.domain.UserProfile
@@ -100,6 +101,8 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     fun setScaleEnabled(enabled: Boolean) = viewModelScope.launch { app.settings.setScaleEnabled(enabled) }
 
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
+
+    fun setDeepseekThinking(level: ThinkingLevel) = viewModelScope.launch { app.settings.setDeepseekThinking(level) }
 
     /** Adds the next engine that isn't in the list yet (up to four). Keys are left alone. */
     fun addEngine() = viewModelScope.launch {
