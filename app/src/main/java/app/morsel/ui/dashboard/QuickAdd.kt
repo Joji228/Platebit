@@ -1,6 +1,27 @@
 package app.morsel.ui.dashboard
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.background
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,6 +92,7 @@ fun QuickAddDialog(
     var grams by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(MealType.forTime()) }
     val focus = remember { FocusRequester() }
+    var closing by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { focus.requestFocus() }
     LaunchedEffect(query) {
@@ -88,31 +110,74 @@ fun QuickAddDialog(
         searching = false
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // Slides down from the top edge, quick and eased, and back up when closed. The system's own
+    // dialog animation and dim are switched off so only this motion is seen.
+    val shown = remember { MutableTransitionState(false) }.apply { targetState = !closing }
+    LaunchedEffect(shown.currentState, shown.isIdle) { if (closing && shown.isIdle && !shown.currentState) onDismiss() }
+    Dialog(
+        onDismissRequest = { closing = true },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        (LocalView.current.parent as? DialogWindowProvider)?.window?.let { window ->
+            SideEffect {
+                window.setWindowAnimations(0)
+                window.setDimAmount(0f)
+            }
+        }
+        Box(Modifier.fillMaxSize()) {
+            AnimatedVisibility(shown, enter = fadeIn(tween(160)), exit = fadeOut(tween(140))) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { closing = true },
+                )
+            }
+            AnimatedVisibility(
+                shown,
+                enter = slideInVertically(tween(220, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(120)),
+                exit = slideOutVertically(tween(180, easing = FastOutLinearInEasing)) { -it } + fadeOut(tween(140, delayMillis = 40)),
+            ) {
         Surface(
             shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 8.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
                 .imePadding(),
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Quick add", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    RoundIconButton(Icons.Rounded.Close, "Close", onDismiss)
+                    RoundIconButton(Icons.Rounded.Close, "Close", { closing = true })
                 }
-                OutlinedTextField(
+                TextField(
                     query,
                     {
                         query = it
                         picked = null
                     },
                     placeholder = { Text("Search a food, e.g. Kit Kat") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                    trailingIcon = { if (searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    trailingIcon = {
+                        when {
+                            searching -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            query.isNotEmpty() -> IconButton(onClick = { query = ""; picked = null }) { Icon(Icons.Rounded.Close, "Clear", Modifier.size(18.dp)) }
+                        }
+                    },
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focus),
@@ -122,7 +187,8 @@ fun QuickAddDialog(
                 if (chosen == null) {
                     if (results.isNotEmpty()) {
                         Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                            results.forEach { fact ->
+                            results.forEachIndexed { index, fact ->
+                                if (index > 0) HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                                 Column(
                                     Modifier
                                         .fillMaxWidth()
@@ -131,7 +197,7 @@ fun QuickAddDialog(
                                             name = fact.label
                                             grams = (fact.servingGrams ?: 100.0).format()
                                         }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        .padding(vertical = 10.dp, horizontal = 4.dp),
                                 ) {
                                     Text(fact.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(
@@ -166,7 +232,12 @@ fun QuickAddDialog(
                     Row {
                         Spacer(Modifier.weight(1f))
                         Surface(
-                            onClick = { if (g > 0) onLog(chosen, name.ifBlank { chosen.label }, g, type) },
+                            onClick = {
+                                if (g > 0) {
+                                    onLog(chosen, name.ifBlank { chosen.label }, g, type)
+                                    closing = true
+                                }
+                            },
                             enabled = g > 0,
                             shape = RoundedCornerShape(50),
                             color = MaterialTheme.colorScheme.primary,
@@ -180,6 +251,8 @@ fun QuickAddDialog(
                         }
                     }
                 }
+            }
+        }
             }
         }
     }

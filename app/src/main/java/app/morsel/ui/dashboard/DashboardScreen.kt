@@ -330,7 +330,6 @@ fun DashboardScreen(
             onDismiss = { showQuickAdd = false },
             onLog = { fact, name, grams, type ->
                 viewModel.quickLog(fact, name, grams, type)
-                showQuickAdd = false
                 Toast.makeText(context, "Logged  ·  kcal", Toast.LENGTH_SHORT).show()
             },
         )
