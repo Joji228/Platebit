@@ -157,6 +157,24 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
         )
     }
     var analyzeWhenSaved by remember { mutableStateOf(false) }
+
+    // Either volume key: take a photo and analyze it (with any taken before) as soon as it's saved.
+    val volumeShutter by rememberUpdatedState {
+        when {
+            viewModel.analyzing || showNote -> Unit
+            hasPermission && viewModel.photos.size + saving < ScanViewModel.MAX_PHOTOS -> {
+                capture()
+                analyzeWhenSaved = true
+            }
+            saving > 0 -> analyzeWhenSaved = true
+            viewModel.canAnalyze -> viewModel.analyze(onResult)
+        }
+    }
+    DisposableEffect(Unit) {
+        val press = { volumeShutter() }
+        HardwareShutter.onPress = press
+        onDispose { if (HardwareShutter.onPress === press) HardwareShutter.onPress = null }
+    }
     LaunchedEffect(saving, analyzeWhenSaved) {
         if (analyzeWhenSaved && saving == 0) {
             analyzeWhenSaved = false

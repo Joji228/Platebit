@@ -1,6 +1,7 @@
 package app.morsel
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -75,6 +76,7 @@ import app.morsel.data.ThemeMode
 import app.morsel.ui.theme.AccentColor
 import app.morsel.ui.body.BodyScreen
 import app.morsel.ui.scale.AutoWeighIn
+import app.morsel.ui.scan.HardwareShutter
 import app.morsel.ui.body.BodyViewModel
 import app.morsel.ui.dashboard.DashboardScreen
 import app.morsel.ui.dashboard.DashboardViewModel
@@ -101,6 +103,21 @@ import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
     private var ready = false
+
+    /** On the Scan screen either volume key snaps and analyzes; anywhere else they change the volume. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val shutter = HardwareShutter.onPress
+        if (shutter != null && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.repeatCount == 0) shutter() // holding the key doesn't fire again
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (HardwareShutter.onPress != null && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) return true
+        return super.onKeyUp(keyCode, event)
+    }
 
     override fun onResume() {
         super.onResume()
