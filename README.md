@@ -40,7 +40,7 @@ Needs Android 12 or newer. Calorie and body figures are estimates, not medical a
 
 ## Optional: Open Food Facts
 
-Turn on **Settings → Food database** to check packaged foods against the free [Open Food Facts](https://world.openfoodfacts.org) database, search products when adding food, and log a product in a few taps with the **+** on Today. Only food names are sent, never photos.
+Turn on **Settings → Food database** to read product barcodes in your photos and check packaged foods against the free [Open Food Facts](https://world.openfoodfacts.org) database, search products when adding food, and log a product in a few taps with the **+** on Today. Only food names are sent, never photos.
 
 ## Optional: Xiaomi smart scale
 
