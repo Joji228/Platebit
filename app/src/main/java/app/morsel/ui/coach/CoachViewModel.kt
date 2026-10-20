@@ -23,6 +23,9 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
     /** Why the last question got no answer; shown in the chat with a Retry button. */
     val error = MutableStateFlow<String?>(null)
 
+    /** When the newest answer arrived, while it's still being typed out on screen; null otherwise. */
+    val typing = MutableStateFlow<Long?>(null)
+
     /** False until the saved conversation has been read, so the empty state doesn't flash first. */
     val loaded = MutableStateFlow(false)
 
@@ -53,8 +56,13 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
         if (!thinking.value && messages.value.lastOrNull()?.fromUser == true) ask()
     }
 
+    fun typed() {
+        typing.value = null
+    }
+
     fun newChat() {
         job?.cancel()
+        typing.value = null
         thinking.value = false
         error.value = null
         messages.value = emptyList()
@@ -71,7 +79,9 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
                     CoachContext.build(LocalDateTime.now(), app.plans.plan.first(), data.meals, data.items, data.water, data.weights)
                 }
                 val reply = app.ai.chat(context, messages.value)
-                messages.value = messages.value + CoachMessage(fromUser = false, text = reply.text)
+                val answer = CoachMessage(fromUser = false, text = reply.text)
+                typing.value = answer.at
+                messages.value = messages.value + answer
                 app.coach.save(messages.value)
             } catch (e: CancellationException) {
                 throw e

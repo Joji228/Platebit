@@ -43,7 +43,9 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -63,6 +65,8 @@ import app.morsel.data.CoachMessage
 import app.morsel.ui.components.Pill
 import app.morsel.ui.components.RoundIconButton
 
+private const val TYPE_CHARS_PER_SECOND = 140L
+
 /** Questions offered on an empty chat; tapping one asks it. */
 val CoachSuggestions = listOf(
     "How am I doing this week?",
@@ -76,6 +80,7 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
     val thinking by viewModel.thinking.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val loaded by viewModel.loaded.collectAsStateWithLifecycle()
+    val typing by viewModel.typing.collectAsStateWithLifecycle()
     CoachContent(
         messages = messages,
         thinking = thinking,
@@ -85,6 +90,8 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
         onRetry = viewModel::retry,
         onNewChat = viewModel::newChat,
         onBack = onBack,
+        typingAt = typing,
+        onTyped = viewModel::typed,
     )
 }
 
@@ -99,6 +106,9 @@ fun CoachContent(
     onRetry: () -> Unit,
     onNewChat: () -> Unit,
     onBack: () -> Unit,
+    /** The answer (by its time) to type out letter by letter; older ones show in full. */
+    typingAt: Long? = null,
+    onTyped: () -> Unit = {},
 ) {
     var input by rememberSaveable { mutableStateOf("") }
     var confirmNew by remember { mutableStateOf(false) }
@@ -148,7 +158,7 @@ fun CoachContent(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(messages) { message ->
-                        if (message.fromUser) UserBubble(message.text) else CoachText(message.text)
+                        if (message.fromUser) UserBubble(message.text) else CoachText(message.text, typing = message.at == typingAt, onTyped = onTyped)
                     }
                     if (thinking) {
                         item { Thinking() }
@@ -251,13 +261,29 @@ private fun UserBubble(text: String) {
     }
 }
 
-/** The coach writes plain text on the page, no bubble; long-press selects it for copying. */
+/**
+ * The coach writes plain text on the page, no bubble; long-press selects it for copying. A new
+ * answer types itself out, quickly enough that even a long one takes under two seconds.
+ */
 @Composable
-private fun CoachText(text: String) {
+private fun CoachText(text: String, typing: Boolean = false, onTyped: () -> Unit = {}) {
     val strong = MaterialTheme.colorScheme.onSurface
+    val full = remember(text, strong) { coachMarkup(text, strong) }
+    var shown by remember(text) { mutableIntStateOf(if (typing) 0 else full.length) }
+    if (typing) {
+        LaunchedEffect(text) {
+            val duration = (full.length * 1000L / TYPE_CHARS_PER_SECOND).coerceIn(400L, 1_800L)
+            val start = withFrameMillis { it }
+            while (shown < full.length) {
+                val elapsed = withFrameMillis { it } - start
+                shown = (full.length * elapsed / duration).toInt().coerceAtMost(full.length)
+            }
+            onTyped()
+        }
+    }
     SelectionContainer {
         Text(
-            coachMarkup(text, strong),
+            if (shown >= full.length) full else full.subSequence(0, shown),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier

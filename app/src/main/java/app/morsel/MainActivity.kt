@@ -211,7 +211,7 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                     view.coachPopTap()
                     // A beat for the pop to show before the chat slides down over it.
                     scope.launch {
-                        delay(90)
+                        delay(40)
                         coachOpen = true
                     }
                     if (!coachTutorialDone) scope.launch { container.settings.setCoachTutorialDone() }
@@ -340,15 +340,13 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
         }
         AnimatedVisibility(
             visible = coachOpen,
-            enter = slideInVertically(tween(340, easing = MotionEasing)) { -it } + fadeIn(tween(200)),
+            enter = slideInVertically(tween(260, easing = MotionEasing)) { -it } + fadeIn(tween(160)),
             exit = slideOutVertically(tween(MOTION_MS, easing = MotionEasing)) { -it } + fadeOut(tween(MOTION_MS)),
         ) {
             BackHandler { coachOpen = false }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            ) {
+            // A Surface, not a plain Box: the chat sits above the Scaffold, so it has to provide the
+            // theme's text colour itself (without it, plain text falls back to black).
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 val vm = viewModel { CoachViewModel(container) }
                 CoachScreen(vm, onBack = { coachOpen = false })
             }

@@ -58,7 +58,7 @@ fun CoachHint(onSkip: () -> Unit, modifier: Modifier = Modifier) {
             travel.snapTo(0f)
             ring.snapTo(0f)
             pop.snapTo(0f)
-            travel.animateTo(1f, tween(900, easing = FastOutSlowInEasing))
+            travel.animateTo(1f, tween(650, easing = FastOutSlowInEasing))
             ring.animateTo(1f, tween(CoachPull.HOLD_MS, easing = LinearEasing))
             launch { pop.animateTo(1f, tween(CoachPull.BURST_MS)) }
             delay(1_100)

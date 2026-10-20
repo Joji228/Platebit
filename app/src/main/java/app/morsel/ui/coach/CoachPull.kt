@@ -155,9 +155,9 @@ class CoachPull internal constructor(
     }
 
     internal companion object {
-        const val RESISTANCE = 0.55f
-        const val HOLD_MS = 380
-        const val BURST_MS = 320
+        const val RESISTANCE = 0.7f
+        const val HOLD_MS = 230
+        const val BURST_MS = 240
     }
 }
 
@@ -165,7 +165,7 @@ class CoachPull internal constructor(
 fun rememberCoachPull(): CoachPull {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    return remember(density) { with(density) { CoachPull(scope, threshold = 84.dp.toPx(), max = 130.dp.toPx()) } }
+    return remember(density) { with(density) { CoachPull(scope, threshold = 64.dp.toPx(), max = 110.dp.toPx()) } }
 }
 
 /**
