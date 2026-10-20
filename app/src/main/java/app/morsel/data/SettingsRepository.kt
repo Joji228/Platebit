@@ -56,6 +56,7 @@ class SettingsRepository(context: Context) {
     private val customUrlKey = stringPreferencesKey("custom_base_url")
     private val enginesKey = stringPreferencesKey("ai_engines")
     private val thinkingKey = stringPreferencesKey("deepseek_thinking")
+    private val foodFactsKey = booleanPreferencesKey("use_food_facts")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
     private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
 
@@ -75,6 +76,9 @@ class SettingsRepository(context: Context) {
 
     /** The Xiaomi scale integration is opt-in; off until the user turns it on in Settings. */
     val scaleEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[scaleKey] ?: false }
+
+    /** Open Food Facts lookups: off unless the user turns them on (they add a couple of seconds). */
+    val useFoodFacts: Flow<Boolean> = store.data.map { prefs -> prefs[foodFactsKey] ?: false }
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(
@@ -191,6 +195,10 @@ class SettingsRepository(context: Context) {
 
     suspend fun setDeepseekThinking(level: ThinkingLevel) {
         store.edit { it[thinkingKey] = level.name }
+    }
+
+    suspend fun setUseFoodFacts(enabled: Boolean) {
+        store.edit { it[foodFactsKey] = enabled }
     }
 
     suspend fun setPrimary(provider: Provider) {

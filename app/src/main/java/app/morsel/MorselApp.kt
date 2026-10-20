@@ -17,6 +17,7 @@ import app.morsel.data.db.MorselDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import app.morsel.data.OpenFoodFacts
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
@@ -52,6 +53,9 @@ class AppContainer(context: Context) {
     val storage = StorageInfo(context)
     val ai = AiService(settings)
     val scale = MiScaleScanner(context)
+
+    /** The free Open Food Facts product database; only used when turned on in Settings. */
+    val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1")
     val backup = CloudBackup(context, repository, settings, scope)
 
     /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */

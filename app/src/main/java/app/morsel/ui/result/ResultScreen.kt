@@ -54,6 +54,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.Search
+import app.morsel.data.FoodFact
 import app.morsel.domain.MealType
 import app.morsel.ui.components.MorselCard
 import app.morsel.ui.components.PillSelector
@@ -251,10 +263,12 @@ fun ResultScreen(viewModel: ResultViewModel, onClose: () -> Unit, onSaved: () ->
         )
     }
     if (adding) {
+        val foodFactsOn by viewModel.foodFactsEnabled.collectAsStateWithLifecycle(initialValue = false)
         AddItemDialog(
+            search = if (foodFactsOn) viewModel::searchFoods else null,
             onDismiss = { adding = false },
-            onAdd = { name, grams, kcal, p, c, f ->
-                viewModel.add(name, grams, kcal, p, c, f)
+            onAdd = { name, grams, kcal, p, c, f, source ->
+                viewModel.add(name, grams, kcal, p, c, f, source)
                 adding = false
             },
         )
@@ -372,6 +386,15 @@ private fun ItemCard(
                 Icon(Icons.Rounded.Close, "Remove item", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        item.foodFacts?.let {
+            Text(
+                "Open Food Facts · $it",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Hold to keep adding or removing, like every other +/− in the app.
@@ -424,10 +447,16 @@ private fun GramsDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double)
     )
 }
 
+/**
+ * Adding a food by hand. With Open Food Facts turned on in Settings, a search field at the top
+ * suggests products as you type (after a short pause, so not every letter is a request); picking
+ * one fills in its name and nutrition per 100 g.
+ */
 @Composable
 private fun AddItemDialog(
+    search: (suspend (String) -> List<FoodFact>)?,
     onDismiss: () -> Unit,
-    onAdd: (String, Double, Double, Double, Double, Double) -> Unit,
+    onAdd: (String, Double, Double, Double, Double, Double, String?) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var grams by remember { mutableStateOf("100") }
@@ -435,13 +464,80 @@ private fun AddItemDialog(
     var protein by remember { mutableStateOf("") }
     var carbs by remember { mutableStateOf("") }
     var fat by remember { mutableStateOf("") }
+    var source by remember { mutableStateOf<String?>(null) }
+
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<FoodFact>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var searchProblem by remember { mutableStateOf<String?>(null) }
+    if (search != null) {
+        LaunchedEffect(query) {
+            val q = query.trim()
+            if (q.length < 2) {
+                results = emptyList()
+                searchProblem = null
+                return@LaunchedEffect
+            }
+            delay(450) // typing pause; a new letter cancels this and starts over
+            searching = true
+            runCatching { search(q) }
+                .onSuccess { results = it; searchProblem = if (it.isEmpty()) "No products found" else null }
+                .onFailure { if (it is CancellationException) throw it else searchProblem = "Couldn't reach Open Food Facts" }
+            searching = false
+        }
+    }
+    fun Double.field() = if (this == 0.0) "0" else String.format(Locale.US, "%.1f", this).trimEnd('0').trimEnd('.')
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = { Text("Add item") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (search != null) {
+                    OutlinedTextField(
+                        query,
+                        { query = it },
+                        label = { Text("Search Open Food Facts") },
+                        leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                        trailingIcon = { if (searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (results.isNotEmpty()) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                            Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                                results.forEach { fact ->
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                name = fact.label
+                                                kcal = fact.kcalPer100.field()
+                                                protein = fact.proteinPer100.field()
+                                                carbs = fact.carbsPer100.field()
+                                                fat = fact.fatPer100.field()
+                                                source = fact.label
+                                                results = emptyList()
+                                                query = ""
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text(fact.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            "${fact.kcalPer100.format()} kcal · P ${fact.proteinPer100.field()} · C ${fact.carbsPer100.field()} · F ${fact.fatPer100.field()} per 100 g",
+                                            style = MaterialTheme.typography.labelSmall.merge(Numeric),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    searchProblem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                OutlinedTextField(name, { name = it; source = null }, label = { Text("Name") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 NumberField("Grams eaten", grams) { grams = it }
                 Text("Per 100 g", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -464,6 +560,7 @@ private fun AddItemDialog(
                         protein.toNumber() ?: 0.0,
                         carbs.toNumber() ?: 0.0,
                         fat.toNumber() ?: 0.0,
+                        source,
                     )
                 },
             ) { Text("Add") }

@@ -47,6 +47,10 @@ data class AiItem(
     @SerialName("protein_per_100g") val proteinPer100: Double = 0.0,
     @SerialName("carbs_per_100g") val carbsPer100: Double = 0.0,
     @SerialName("fat_per_100g") val fatPer100: Double = 0.0,
+    /** Brand and product for packaged foods ("Oreo Original"), blank for anything else. */
+    val product: String = "",
+    /** Set by Platebit when the numbers came from Open Food Facts: the product it matched. */
+    val foodFacts: String? = null,
 )
 
 @Serializable
@@ -76,9 +80,10 @@ Rules:
 - Include visible or mentioned cooking oil, butter, sauces and dressings as separate items.
 - Follow the user's description when it adds or corrects information.
 - Keep names short and in English.
+- For a packaged or branded product you can identify (from the packaging, a logo or the description), set product to its brand and product name, e.g. "Oreo Original" or "Coca-Cola Zero"; leave product empty for home-made or unbranded food.
 - Choose meal_type from what the food is, using the local time given as a hint: typical breakfast foods (cereal, eggs and toast, yogurt, pastries, coffee with something small) are breakfast; a single small item or light bite (a chocolate bar, fruit, crisps, a protein bar, a drink with a biscuit) is a snack at any time; a full or heavy plated meal is lunch around midday and dinner in the evening.
 Respond ONLY with JSON in exactly this shape:
-{"meal_name": "2-4 word name", "meal_type": "breakfast|lunch|dinner|snack", "items": [{"name": "food", "grams": 150, "kcal_per_100g": 165, "protein_per_100g": 31, "carbs_per_100g": 0, "fat_per_100g": 3.6}], "confidence": "low|medium|high", "notes": "one short sentence about assumptions"}
+{"meal_name": "2-4 word name", "meal_type": "breakfast|lunch|dinner|snack", "items": [{"name": "food", "grams": 150, "kcal_per_100g": 165, "protein_per_100g": 31, "carbs_per_100g": 0, "fat_per_100g": 3.6, "product": ""}], "confidence": "low|medium|high", "notes": "one short sentence about assumptions"}
 If there is no food, return {"meal_name": "", "items": [], "confidence": "low", "notes": "No food found"}."""
 
     fun user(note: String?, imageCount: Int): String = buildString {

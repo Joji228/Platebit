@@ -3,6 +3,7 @@ package app.morsel.ui.result
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.morsel.AppContainer
+import app.morsel.data.FoodFact
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
 import app.morsel.domain.Macros
@@ -24,6 +25,8 @@ data class EditableItem(
     val proteinPer100: Double,
     val carbsPer100: Double,
     val fatPer100: Double,
+    /** The Open Food Facts product these numbers came from, when they did. */
+    val foodFacts: String? = null,
 ) {
     fun macros(multiplier: Double = 1.0) =
         Macros(kcalPer100, proteinPer100, carbsPer100, fatPer100) * (grams * multiplier / 100.0)
@@ -94,7 +97,7 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                     // The AI's pick when it gave one (a chocolate bar is a snack whatever the time), else the time of day.
                     mealType = MealType.fromAi(meal?.mealType) ?: MealType.forTime(),
                     items = meal?.items.orEmpty().map {
-                        EditableItem(nextKey++, it.name, it.grams, it.kcalPer100, it.proteinPer100, it.carbsPer100, it.fatPer100)
+                        EditableItem(nextKey++, it.name, it.grams, it.kcalPer100, it.proteinPer100, it.carbsPer100, it.fatPer100, it.foodFacts)
                     },
                     source = draft?.result?.let { "${it.provider.title} · ${it.model}" },
                     confidence = meal?.confidence,
@@ -131,8 +134,13 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
 
     fun remove(key: Long) = _state.update { s -> s.copy(items = s.items.filterNot { it.key == key }) }
 
-    fun add(name: String, grams: Double, kcal: Double, protein: Double, carbs: Double, fat: Double) =
-        _state.update { s -> s.copy(items = s.items + EditableItem(nextKey++, name, grams, kcal, protein, carbs, fat)) }
+    fun add(name: String, grams: Double, kcal: Double, protein: Double, carbs: Double, fat: Double, foodFacts: String? = null) =
+        _state.update { s -> s.copy(items = s.items + EditableItem(nextKey++, name, grams, kcal, protein, carbs, fat, foodFacts)) }
+
+    /** Whether the add-item dialog offers Open Food Facts search (the user's choice in Settings). */
+    val foodFactsEnabled = app.settings.useFoodFacts
+
+    suspend fun searchFoods(query: String): List<FoodFact> = app.foodFacts.search(query)
 
     private fun updateItem(key: Long, transform: (EditableItem) -> EditableItem) =
         _state.update { s -> s.copy(items = s.items.map { if (it.key == key) transform(it) else it }) }

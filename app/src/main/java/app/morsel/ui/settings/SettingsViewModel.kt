@@ -100,6 +100,10 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
 
     fun setScaleEnabled(enabled: Boolean) = viewModelScope.launch { app.settings.setScaleEnabled(enabled) }
 
+    val useFoodFacts = app.settings.useFoodFacts
+
+    fun setUseFoodFacts(enabled: Boolean) = viewModelScope.launch { app.settings.setUseFoodFacts(enabled) }
+
     fun setPrimary(provider: Provider) = viewModelScope.launch { app.settings.setPrimary(provider) }
 
     fun setDeepseekThinking(level: ThinkingLevel) = viewModelScope.launch { app.settings.setDeepseekThinking(level) }

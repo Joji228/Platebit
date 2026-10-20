@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.Provider
 import app.morsel.data.ThemeMode
+import androidx.compose.material.icons.rounded.Search
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.Manifest
@@ -322,6 +323,28 @@ fun SettingsScreen(
                                 // Turning it on asks first; turning it off doesn't need to.
                                 onChange = { on -> if (on) scaleConfirm = true else viewModel.setScaleEnabled(false) },
                                 icon = Icons.Rounded.MonitorWeight,
+                            )
+                        },
+                    ),
+                )
+            }
+
+            item { GroupLabel("Food database") }
+            item {
+                val foodFactsOn by viewModel.useFoodFacts.collectAsStateWithLifecycle(initialValue = false)
+                GroupedList(
+                    rows = listOf(
+                        {
+                            SwitchRow(
+                                title = "Use Open Food Facts",
+                                subtitle = if (foodFactsOn) {
+                                    "On. Packaged foods in scans are checked against their real labels, and Add item can search products. Adds a couple of seconds to scans"
+                                } else {
+                                    "Free, open product database. Checks packaged foods in scans and lets you search products when adding food. Adds a couple of seconds; only food names are sent, never photos"
+                                },
+                                checked = foodFactsOn,
+                                onChange = viewModel::setUseFoodFacts,
+                                icon = Icons.Rounded.Search,
                             )
                         },
                     ),

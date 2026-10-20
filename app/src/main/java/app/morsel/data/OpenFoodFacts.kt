@@ -1,0 +1,127 @@
+package app.morsel.data
+
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+/** One product from Open Food Facts, with its nutrition per 100 g. */
+data class FoodFact(
+    val code: String,
+    val name: String,
+    val brand: String?,
+    val kcalPer100: Double,
+    val proteinPer100: Double,
+    val carbsPer100: Double,
+    val fatPer100: Double,
+) {
+    /** "Oreo · Oreo Original" style label, without repeating the brand. */
+    val label: String get() = if (brand.isNullOrBlank() || name.contains(brand, ignoreCase = true)) name else "$brand $name"
+}
+
+/**
+ * The free, open Open Food Facts product database (openfoodfacts.org), read through its
+ * Search-a-licious full-text search. No key is needed; Open Food Facts asks apps to identify
+ * themselves with a User-Agent. Only the text typed or the product name is sent, never photos.
+ */
+class OpenFoodFacts(version: String) {
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
+    private val userAgent = "Platebit/$version (https://github.com/Joji228/Platebit)"
+
+    /** Products matching [query], best first; only ones with usable nutrition are kept. */
+    suspend fun search(query: String, size: Int = 8): List<FoodFact> {
+        val url = "https://search.openfoodfacts.org/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query.trim())
+            .addQueryParameter("page_size", (size * 2).toString()) // some hits lack nutrition and are dropped
+            .addQueryParameter("fields", "code,product_name,brands,nutriments")
+            .build()
+        val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
+        val body = http.newCall(request).await()
+        return FoodFactsParser.parse(body).take(size)
+    }
+
+    /**
+     * The best match for a product the AI named in a photo ("Oreo Original"), or null when
+     * nothing close enough is found. Every word of the AI's name has to appear in the product's
+     * name or brand, so a guess never swaps in an unrelated product.
+     */
+    suspend fun match(product: String): FoodFact? = FoodFactsParser.bestMatch(product, search(product, size = 5))
+
+    private suspend fun Call.await(): String = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (cont.isActive) cont.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (!it.isSuccessful) cont.resumeWithException(IOException("Open Food Facts answered ${it.code}"))
+                    else cont.resume(it.body.string())
+                }
+            }
+        })
+    }
+}
+
+/** Reading Open Food Facts' answers; separate so it can be tested without the network. */
+object FoodFactsParser {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun parse(body: String): List<FoodFact> {
+        val hits = runCatching { json.parseToJsonElement(body).jsonObject["hits"]?.jsonArray }.getOrNull() ?: return emptyList()
+        return hits.mapNotNull { hit -> (hit as? JsonObject)?.let(::product) }
+    }
+
+    private fun product(hit: JsonObject): FoodFact? {
+        val name = (hit["product_name"] as? JsonPrimitive)?.content?.trim().orEmpty()
+        if (name.isEmpty()) return null
+        val brand = when (val b = hit["brands"]) {
+            is JsonArray -> b.firstOrNull()?.let { (it as? JsonPrimitive)?.content }
+            is JsonPrimitive -> b.content.split(',').firstOrNull()
+            else -> null
+        }?.trim()?.takeIf { it.isNotEmpty() }
+        val n = hit["nutriments"] as? JsonObject ?: return null
+        fun num(key: String) = (n[key] as? JsonPrimitive)?.doubleOrNull
+        // Energy is often only given in kilojoules.
+        val kcal = num("energy-kcal_100g") ?: num("energy-kj_100g")?.div(KJ_PER_KCAL) ?: num("energy_100g")?.div(KJ_PER_KCAL) ?: return null
+        if (kcal <= 0 || kcal > 950) return null
+        return FoodFact(
+            code = (hit["code"] as? JsonPrimitive)?.content.orEmpty(),
+            name = name,
+            brand = brand,
+            kcalPer100 = kcal,
+            proteinPer100 = num("proteins_100g") ?: 0.0,
+            carbsPer100 = num("carbohydrates_100g") ?: 0.0,
+            fatPer100 = num("fat_100g") ?: 0.0,
+        )
+    }
+
+    fun bestMatch(product: String, candidates: List<FoodFact>): FoodFact? {
+        val words = product.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }
+        if (words.isEmpty()) return null
+        return candidates.firstOrNull { fact ->
+            val text = "${fact.brand.orEmpty()} ${fact.name}".lowercase()
+            words.all { it in text }
+        }
+    }
+
+    private const val KJ_PER_KCAL = 4.184
+}
