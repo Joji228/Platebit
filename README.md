@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.0/Platebit-1.3.0.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" alt="Download APK"></a>
+  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.3/Platebit-1.3.3.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" alt="Download APK"></a>
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="MIT license"></a>
 </p>
@@ -25,14 +25,14 @@
 ## What it does
 
 - 📸 **Photo to calories.** Take a picture of your plate (or a nutrition label) and get calories, protein, carbs and fat. Adjust the grams (hold + or − to keep going) or the portion and it recalculates instantly.
-- 📊 **One clean dashboard.** Calories, macros, water and a weight trend you can swipe through day by day; swipe past today to jump straight to the camera. Hold a meal to delete it, and pick one of 5 accent colors.
+- 📊 **One clean dashboard.** Calories, macros, water and a weight trend you can swipe through day by day; swipe past today to jump straight to the camera. Forgot something? Swipe back and add food (the + on Meals) or a weigh-in to any past day. Hold a meal to delete it, and pick one of 5 accent colors.
 - 🧠 **Smart target (optional).** Turn it on in Settings and, after a couple of weeks, it compares what you eat with how your weight moves and tunes your daily calories to your real metabolism.
 - 🔑 **Bring your own AI.** Use DeepSeek, Gemini, OpenAI, Claude, or any OpenAI-compatible service, and set up to 4 side by side. You pay the provider directly; Platebit has no servers.
 - 🔒 **Private by design.** No account, no ads, no tracking. Your meals stay on your phone, and photos go only to the AI you pick.
 
 ## Install
 
-1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.0/Platebit-1.3.0.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
+1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.3/Platebit-1.3.3.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
 2. Open **Settings → AI engine** and paste an API key for the service you want to use.
 3. Tap the camera and scan a meal.
 
@@ -44,7 +44,7 @@ On by default (you can turn it off in **Settings → Food database**), Platebit 
 
 ## Optional: AI coach (beta)
 
-New in 1.3. Turn on **Settings → AI coach**, then pull down on Today, Scan or the Body screen and hold until the bubble pops: a chat slides in that knows your meals, water, weigh-ins and body composition, so you can ask how you're doing and get advice based on your own numbers. It uses the AI engine you already set up and is off by default.
+New in 1.3. Turn on **Settings → AI coach**, then pull down on Today, Scan or the Body screen and hold until the bubble pops: a chat slides in that knows your meals, water, weigh-ins and body composition, so you can ask how you're doing and get advice based on your own numbers. Ask it to log a meal, water or a weigh-in, or to change a target, and it prepares the change as a card you accept or decline. It uses the AI engine you already set up and is off by default.
 
 ## Optional: Xiaomi smart scale
 
