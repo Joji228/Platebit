@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.4/Platebit-1.3.4.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" width="230" alt="Download APK"></a>
+  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.5/Platebit-1.3.5.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" width="230" alt="Download APK"></a>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 
 ## Install
 
-1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.4/Platebit-1.3.4.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
+1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.5/Platebit-1.3.5.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
 2. Open **Settings → AI engine** and paste an API key for the service you want to use.
 3. Tap the camera and scan a meal.
 
@@ -42,7 +42,7 @@ On by default (you can turn it off in **Settings → Food database**), Platebit 
 
 ## Optional: AI coach (beta)
 
-New in 1.3. Turn on **Settings → AI coach**, then pull down on the Diary, Scan or Body screen (or a meal) and hold until the bubble pops: a chat slides in that knows your meals, water, weigh-ins and body composition, so you can ask how you're doing and get advice based on your own numbers. Ask it to log a meal, water or a weigh-in, or to change a target, and it prepares the change as a card you accept or decline. It uses the AI engine you already set up and is off by default.
+New in 1.3. Turn on **Settings → AI coach**, then pull down on the Diary, Scan or Body screen (or a meal) and hold until the bubble pops: a chat slides in that knows your meals, water, weigh-ins and body composition, so you can ask how you're doing and get advice based on your own numbers. Ask it to log a meal, water or a weigh-in, or to change a target, and it prepares the change as a card you accept or decline. Mention a brand (say, a Lacta) and it looks the product up on Open Food Facts first, so the card uses the real label values. It uses the AI engine you already set up and is off by default. For now Platebit is tuned for Greece: the AI expects Greek foods and brands, and Greek products come first in searches.
 
 ## Optional: Xiaomi smart scale
 
