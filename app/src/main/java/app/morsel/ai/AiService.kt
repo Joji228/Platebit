@@ -107,8 +107,8 @@ If there is no food, return {"meal_name": "", "items": [], "confidence": "low", 
     }
 }
 
-class AiService(private val settings: SettingsRepository) {
-    private val http = OkHttpClient.Builder()
+class AiService(private val settings: SettingsRepository, client: OkHttpClient) {
+    private val http = client.newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .readTimeout(150, TimeUnit.SECONDS)

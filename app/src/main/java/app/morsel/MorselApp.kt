@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import app.morsel.data.OpenFoodFacts
 import kotlinx.coroutines.flow.MutableStateFlow
+import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -47,14 +48,16 @@ class AppContainer(context: Context) {
     val clock = DayClock(scope)
     val settings = SettingsRepository(context)
     val repository = MorselRepository(database, File(context.filesDir, "meals"))
-    val plans = PlanRepository(settings, repository, clock)
+    val plans = PlanRepository(settings, repository, clock, scope)
     val photos = PhotoStore(context)
     val storage = StorageInfo(context)
-    val ai = AiService(settings)
+    /** One HTTP client for everything, so AI and Open Food Facts share connections and threads. */
+    private val http = OkHttpClient()
+    val ai = AiService(settings, http)
     val scale = MiScaleScanner(context)
 
     /** The free Open Food Facts product database; only used when turned on in Settings. */
-    val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1")
+    val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1", http)
 
     /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */
     val manualWeighInOpen = MutableStateFlow(false)

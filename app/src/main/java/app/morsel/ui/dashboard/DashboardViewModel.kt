@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -59,7 +61,7 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
                 meals = meals,
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardState())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardState())
 
     fun previousDay() {
         date.value = date.value.minusDays(1)

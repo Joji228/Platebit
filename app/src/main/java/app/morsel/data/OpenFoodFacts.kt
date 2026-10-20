@@ -42,8 +42,9 @@ data class FoodFact(
  * Search-a-licious full-text search. No key is needed; Open Food Facts asks apps to identify
  * themselves with a User-Agent. Only the text typed or the product name is sent, never photos.
  */
-class OpenFoodFacts(version: String) {
-    private val http = OkHttpClient.Builder()
+class OpenFoodFacts(version: String, client: OkHttpClient) {
+    // Shares the app's connection pool and threads; only the timeouts are its own.
+    private val http = client.newBuilder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()

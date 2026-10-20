@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import java.time.LocalDate
 import kotlin.math.pow
 
@@ -45,7 +47,7 @@ class BodyViewModel(private val app: AppContainer) : ViewModel() {
     val state: StateFlow<BodyState> = combine(app.plans.plan, app.clock.today) { plan, today ->
         val profile = plan.profile ?: return@combine BodyState(loading = false, today = today)
         build(profile, plan.weighIns, today)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BodyState())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BodyState()) // every weigh-in is analysed: keep it off the main thread
 
     private fun build(profile: UserProfile, weighIns: List<WeightEntity>, today: LocalDate): BodyState {
         if (weighIns.isEmpty()) return BodyState(loading = false, profile = profile, today = today)

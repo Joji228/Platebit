@@ -1,5 +1,10 @@
 package app.morsel.data
 
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import app.morsel.data.db.WeightEntity
 import app.morsel.domain.AdaptiveEstimate
 import app.morsel.domain.AdaptiveTdee
@@ -34,9 +39,13 @@ class PlanRepository(
     private val settings: SettingsRepository,
     private val repository: MorselRepository,
     clock: DayClock,
+    /** App-wide scope the shared plan lives in while anything is watching it. */
+    scope: CoroutineScope,
 ) {
 
     // Rebuilt when the day changes, so the smart target's 4-week window moves with the calendar.
+    // Worked out once on a background thread and shared: the dashboard, Body screen, Settings and
+    // the scale all read the same result instead of each recomputing it on the main thread.
     val plan: Flow<PlanState> = clock.today.flatMapLatest { today ->
         combine(
             settings.profile,
@@ -58,4 +67,6 @@ class PlanRepository(
             PlanState(profile, weights, trend, current, estimate, scale, Nutrition.targets(profile, current, scale))
         }
     }
+        .flowOn(Dispatchers.Default)
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 }

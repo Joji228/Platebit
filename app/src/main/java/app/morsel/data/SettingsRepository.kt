@@ -77,8 +77,8 @@ class SettingsRepository(context: Context) {
     /** The Xiaomi scale integration is opt-in; off until the user turns it on in Settings. */
     val scaleEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[scaleKey] ?: false }
 
-    /** Open Food Facts lookups: off unless the user turns them on (they add a couple of seconds). */
-    val useFoodFacts: Flow<Boolean> = store.data.map { prefs -> prefs[foodFactsKey] ?: false }
+    /** Open Food Facts lookups: on unless the user turns them off (since 1.1.7). */
+    val useFoodFacts: Flow<Boolean> = store.data.map { prefs -> prefs[foodFactsKey] ?: true }
 
     val ai: Flow<AiSettings> = store.data.map { prefs ->
         AiSettings(

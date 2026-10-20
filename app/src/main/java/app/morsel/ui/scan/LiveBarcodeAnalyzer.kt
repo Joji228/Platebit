@@ -33,6 +33,7 @@ class LiveBarcodeAnalyzer(
     private var lastFrameAt = 0L
     private var frame = 0
     private var buffer = ByteArray(0)
+    private var turned = ByteArray(0)
 
     override fun analyze(image: ImageProxy) {
         try {
@@ -68,7 +69,8 @@ class LiveBarcodeAnalyzer(
         val turn = upright == (frame % 2 == 0)
         val source = if (turn) {
             // Transposed copy of the box, so bars across the screen become columns for the 1D reader.
-            val out = ByteArray(cropW * cropH)
+            if (turned.size != cropW * cropH) turned = ByteArray(cropW * cropH) // reused frame to frame
+            val out = turned
             for (y in 0 until cropH) {
                 val row = (top + y) * rowStride + left
                 for (x in 0 until cropW) out[x * cropH + y] = data[row + x]
