@@ -64,6 +64,20 @@ class OpenFoodFacts(version: String) {
      * nothing close enough is found. Every word of the AI's name has to appear in the product's
      * name or brand, so a guess never swaps in an unrelated product.
      */
+    /** The product with this barcode, or null when Open Food Facts doesn't have it (or lacks its nutrition). */
+    suspend fun product(barcode: String): FoodFact? {
+        val url = "https://world.openfoodfacts.org/api/v2/product/$barcode.json".toHttpUrl().newBuilder()
+            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity")
+            .build()
+        val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
+        val body = try {
+            http.newCall(request).await()
+        } catch (e: IOException) {
+            if (e.message?.contains("404") == true) return null else throw e
+        }
+        return FoodFactsParser.parseProduct(body, barcode)
+    }
+
     suspend fun match(product: String): FoodFact? = FoodFactsParser.bestMatch(product, search(product, size = 5))
 
     private suspend fun Call.await(): String = suspendCancellableCoroutine { cont ->
@@ -90,6 +104,13 @@ object FoodFactsParser {
     fun parse(body: String): List<FoodFact> {
         val hits = runCatching { json.parseToJsonElement(body).jsonObject["hits"]?.jsonArray }.getOrNull() ?: return emptyList()
         return hits.mapNotNull { hit -> (hit as? JsonObject)?.let(::product) }
+    }
+
+    /** A single product answer ({"status":1,"product":{...}}) from the barcode lookup. */
+    fun parseProduct(body: String, barcode: String): FoodFact? {
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        val product = root["product"] as? JsonObject ?: return null
+        return product(product)?.let { if (it.code.isEmpty()) it.copy(code = barcode) else it }
     }
 
     private fun product(hit: JsonObject): FoodFact? {

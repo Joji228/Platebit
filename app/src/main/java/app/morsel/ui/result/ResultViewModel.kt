@@ -99,7 +99,7 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                     items = meal?.items.orEmpty().map {
                         EditableItem(nextKey++, it.name, it.grams, it.kcalPer100, it.proteinPer100, it.carbsPer100, it.fatPer100, it.foodFacts)
                     },
-                    source = draft?.result?.let { "${it.provider.title} · ${it.model}" },
+                    source = draft?.result?.let { it.sourceLabel ?: "${it.provider.title} · ${it.model}" },
                     confidence = meal?.confidence,
                     notes = meal?.notes?.takeIf { it.isNotBlank() },
                     fallbackReason = draft?.result?.fallbackReason,

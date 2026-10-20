@@ -18,6 +18,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import app.morsel.ai.AnalysisResult
+import app.morsel.data.BarcodeReader
+import app.morsel.ai.AiMeal
+import app.morsel.ai.AiItem
 import java.io.File
 
 class ScanViewModel(private val app: AppContainer) : ViewModel() {
@@ -59,9 +62,15 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
             analyzing = true
             error = null
             try {
-                val images = photos.map { app.photos.prepareForAi(it) }
-                var result = app.ai.analyze(images, note.ifBlank { null })
-                if (app.settings.useFoodFacts.first()) result = withFoodFacts(result)
+                val useFoodFacts = app.settings.useFoodFacts.first()
+                // A product barcode in the photos goes straight to Open Food Facts: exact label
+                // values in a second or two, and no AI call at all.
+                val fromBarcode = if (useFoodFacts) fromBarcodes() else null
+                val result = fromBarcode ?: run {
+                    val images = photos.map { app.photos.prepareForAi(it) }
+                    val analyzed = app.ai.analyze(images, note.ifBlank { null })
+                    if (useFoodFacts) withFoodFacts(analyzed) else analyzed
+                }
                 app.draft = MealDraft(photos.toList(), note.ifBlank { null }, result, app.clock.today.value)
                 reset()
                 onReady()
@@ -73,6 +82,44 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
                 analyzing = false
             }
         }
+    }
+
+    /**
+     * Reads barcodes in the photos on the phone and looks each one up on Open Food Facts. Returns
+     * a ready result when at least one product is found (one item each, a serving or 100 g),
+     * or null to let the AI handle the photos as usual.
+     */
+    private suspend fun fromBarcodes(): AnalysisResult? {
+        val codes = photos.mapNotNull { BarcodeReader.read(it) }.distinct().take(3)
+        if (codes.isEmpty()) return null
+        val facts = withTimeoutOrNull(6_000) {
+            coroutineScope { codes.map { code -> async { runCatching { app.foodFacts.product(code) }.getOrNull() } }.awaitAll() }
+        }?.filterNotNull().orEmpty()
+        if (facts.isEmpty()) return null
+        val items = facts.map {
+            AiItem(
+                name = it.label,
+                grams = it.servingGrams ?: 100.0,
+                kcalPer100 = it.kcalPer100,
+                proteinPer100 = it.proteinPer100,
+                carbsPer100 = it.carbsPer100,
+                fatPer100 = it.fatPer100,
+                foodFacts = it.label,
+            )
+        }
+        val ai = app.settings.ai.first()
+        return AnalysisResult(
+            meal = AiMeal(
+                mealName = facts.joinToString(" + ") { it.label }.take(60),
+                items = items,
+                confidence = "high",
+                notes = "Read from the barcode on Open Food Facts. Amount is " +
+                    (if (facts.all { it.servingGrams != null }) "one serving" else "100 g or one serving") + "; adjust if you had more or less.",
+            ),
+            provider = ai.primary,
+            model = "",
+            sourceLabel = "Open Food Facts · barcode",
+        )
     }
 
     /**

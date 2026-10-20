@@ -64,7 +64,14 @@ data class AiMeal(
 )
 
 /** [fallbackReason] explains why the primary provider wasn't used, when it wasn't. */
-data class AnalysisResult(val meal: AiMeal, val provider: Provider, val model: String, val fallbackReason: String? = null)
+data class AnalysisResult(
+    val meal: AiMeal,
+    val provider: Provider,
+    val model: String,
+    val fallbackReason: String? = null,
+    /** Shown instead of "provider · model" when no AI was used (a barcode read from Open Food Facts). */
+    val sourceLabel: String? = null,
+)
 
 class AiException(message: String) : Exception(message)
 

@@ -38,4 +38,16 @@ class FoodFactsParserTest {
         assertEquals(emptyList<FoodFact>(), FoodFactsParser.parse("not json"))
         assertEquals(emptyList<FoodFact>(), FoodFactsParser.parse("""{"error":"x"}"""))
     }
+
+    @Test
+    fun readsABarcodeLookup() {
+        val body = """{"code":"3017620422003","product":{"brands":"Nutella, Ferrero","nutriments":{"energy-kcal_100g":539,"proteins_100g":6.3,"carbohydrates_100g":57.5,"fat_100g":30.9},"product_name":"Nutella","serving_quantity":15},"status":1}"""
+        val fact = FoodFactsParser.parseProduct(body, "3017620422003")!!
+        assertEquals("Nutella", fact.name)
+        assertEquals("Nutella", fact.brand)
+        assertEquals("Nutella", fact.label)
+        assertEquals(539.0, fact.kcalPer100, 0.0)
+        assertEquals(15.0, fact.servingGrams!!, 0.0)
+        assertNull(FoodFactsParser.parseProduct("""{"status":0,"status_verbose":"product not found"}""", "1"))
+    }
 }

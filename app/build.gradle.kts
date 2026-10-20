@@ -99,6 +99,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    // Reads product barcodes in photos on the phone (open source, works offline).
+    implementation(libs.zxing.core)
     implementation(libs.coil.compose)
 
     // Google Drive backup: Google account access, and background uploads.
