@@ -65,6 +65,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FlashOff
@@ -246,7 +247,7 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 12.dp)
                     .clip(RoundedCornerShape(28.dp))
                     .background(Color(0xFF0D0D0F)),
             ) {
@@ -296,7 +297,7 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 40.dp, vertical = 14.dp),
+                    .padding(horizontal = 40.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -521,25 +522,34 @@ private fun PhotoStrip(viewModel: ScanViewModel, modifier: Modifier) {
     }
 }
 
+/**
+ * Adds a photo to the scan (Snap and analyze below does the one-tap version), so it carries a
+ * plus rather than looking like a camera's only button.
+ */
 @Composable
 private fun Shutter(enabled: Boolean, onClick: () -> Unit) {
     val ring = MaterialTheme.colorScheme.onSurface
     Box(
         Modifier
-            .size(78.dp)
+            .size(72.dp)
             .clip(CircleShape)
-            .border(4.dp, if (enabled) ring else ring.copy(alpha = 0.3f), CircleShape)
+            .border(3.5.dp, if (enabled) ring else ring.copy(alpha = 0.3f), CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .size(62.dp)
+                .size(58.dp)
                 .clip(CircleShape)
                 .background(if (enabled) ring else ring.copy(alpha = 0.3f)),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Add, "Add a photo", Modifier.size(30.dp), tint = ShutterPlus)
+        }
     }
 }
+
+private val ShutterPlus = Color(0xFF8E8E93)
 
 @Composable
 private fun NoPermission(onAllow: () -> Unit) {

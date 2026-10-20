@@ -62,6 +62,18 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.CoachMessage
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import app.morsel.ui.theme.Numeric
+import app.morsel.ui.theme.Nutrient
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -71,6 +83,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -378,32 +391,137 @@ private fun ErrorRow(message: String, onRetry: () -> Unit) {
 /** A change the coach offers to make, waiting for Accept or Decline. */
 @Composable
 private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () -> Unit) {
-    val detail = remember(action) { CoachActions.detail(action, LocalDate.now()) }
-    val tint = if (action.type == ActionType.DELETE_MEAL) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column(Modifier.padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 4.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
+    val today = remember { LocalDate.now() }
+    val deleting = action.type == ActionType.DELETE_MEAL
+    // The accent colour, except for deleting, which is red so it can't be mistaken for logging.
+    val tint = if (deleting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val day = remember(action) {
+        action.date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.takeIf { it != today }?.let {
+            if (it == today.minusDays(1)) "Yesterday" else it.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
+        }
+    }
+    val view = LocalView.current
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.35f)),
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            Modifier
+                .background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.12f), Color.Transparent)))
+                .padding(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(32.dp)
-                        .background(tint.copy(alpha = 0.16f), RoundedCornerShape(10.dp)),
+                        .size(42.dp)
+                        .background(tint.copy(alpha = 0.18f), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(action.type.icon, null, Modifier.size(18.dp), tint = tint)
+                    Icon(action.type.icon, null, Modifier.size(22.dp), tint = tint)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(CoachActions.title(action), style = MaterialTheme.typography.titleSmall)
-                    detail?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text(
+                        "COACH SUGGESTS",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold),
+                        color = tint,
+                    )
+                    Text(CoachActions.title(action), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                day?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Pill(it, MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onDecline) { Text("Decline", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Spacer(Modifier.width(4.dp))
-                TextButton(onClick = onAccept) { Text("Accept", fontWeight = FontWeight.SemiBold) }
+            when (action.type) {
+                ActionType.LOG_FOOD -> {
+                    val m = action.macros
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(m.kcal.roundToInt().toString(), style = MaterialTheme.typography.headlineSmall.merge(Numeric))
+                        Text(" kcal", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        MacroChip("P", m.protein, Nutrient.Protein)
+                        Spacer(Modifier.width(6.dp))
+                        MacroChip("C", m.carbs, Nutrient.Carbs)
+                        Spacer(Modifier.width(6.dp))
+                        MacroChip("F", m.fat, Nutrient.Fat)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        action.foods.joinToString(" · ") { "${it.name} ${it.grams.roundToInt()} g" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                ActionType.DELETE_MEAL -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        listOfNotNull(day ?: "Today", action.kcal?.let { "$it kcal" }).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> Unit
             }
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CardButton(
+                    "Decline", Icons.Rounded.Close,
+                    container = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    content = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    onClick = onDecline,
+                )
+                CardButton(
+                    if (deleting) "Delete" else "Accept", Icons.Rounded.Check,
+                    container = tint,
+                    content = if (deleting) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        view.coachPopTap()
+                        onAccept()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** P / C / F amount on a meal card, with the same colours as everywhere else in the app. */
+@Composable
+private fun MacroChip(letter: String, grams: Double, color: Color) {
+    Row(
+        Modifier
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(letter, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(4.dp))
+        Text("${grams.roundToInt()} g", style = MaterialTheme.typography.labelMedium.merge(Numeric))
+    }
+}
+
+/** A big, easy-to-hit button for the cards: Decline on the left, Accept on the right. */
+@Composable
+private fun CardButton(label: String, icon: ImageVector, container: Color, content: Color, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = container,
+        contentColor = content,
+        modifier = modifier.height(50.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
         }
     }
 }
