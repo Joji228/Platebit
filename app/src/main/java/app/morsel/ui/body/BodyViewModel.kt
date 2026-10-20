@@ -20,6 +20,9 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import kotlin.math.pow
 
+/** One body-composition measurement from the scale. */
+data class ScanEntry(val date: LocalDate, val timestamp: Long, val report: BodyReport)
+
 data class BodyState(
     val loading: Boolean = true,
     val profile: UserProfile? = null,
@@ -30,6 +33,8 @@ data class BodyState(
     val latestScan: BodyReport? = null,
     val previousScan: BodyReport? = null,
     val latestScanDate: LocalDate? = null,
+    /** Every measurement with body composition, oldest first, for swiping back through them. */
+    val scans: List<ScanEntry> = emptyList(),
     val trendWeight: Double? = null,
     val change7: Double? = null,
     val change30: Double? = null,
@@ -86,6 +91,7 @@ class BodyViewModel(private val app: AppContainer) : ViewModel() {
             latestScan = scans.lastOrNull()?.second,
             previousScan = scans.getOrNull(scans.size - 2)?.second,
             latestScanDate = scans.lastOrNull()?.first,
+            scans = weighIns.zip(reports).filter { it.second.second.composition != null }.map { (w, r) -> ScanEntry(r.first, w.timestamp, r.second) },
             trendWeight = trendNow,
             change7 = changeSince(7),
             change30 = changeSince(30),

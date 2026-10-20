@@ -22,6 +22,26 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import java.time.ZoneId
+import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.Stable
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -112,13 +132,21 @@ private val CHART_METRICS = listOf(Metric.WEIGHT, Metric.BMI, Metric.FAT, Metric
 @Composable
 fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showScale by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // The whole page, not just what fits on screen, is recorded here so it can be saved as one tall image.
     val page = rememberGraphicsLayer()
     val pageBackground = MaterialTheme.colorScheme.background
     var saving by remember { mutableStateOf(false) }
+
+    // Which measurement is shown: -1 means the newest. Swiping right goes back in time.
+    val scans = state.scans
+    var selected by rememberSaveable { mutableIntStateOf(-1) }
+    val index = if (selected !in scans.indices) scans.lastIndex else selected
+    val swipe = remember { MeasurementSwipe(scope) }
+    swipe.canGoOlder = index > 0
+    swipe.canGoNewer = index in 0 until scans.lastIndex
+    swipe.onChange = { dir -> val target = index + dir; selected = if (target >= scans.lastIndex) -1 else target }
 
     Column(
         Modifier
@@ -149,9 +177,7 @@ fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
                         }
                     },
                 )
-                Spacer(Modifier.width(8.dp))
             }
-            RoundIconButton(Icons.Rounded.MonitorWeight, "Weigh in with smart scale", { showScale = true })
         }
         if (state.loading) return@Column
 
@@ -171,98 +197,200 @@ fun BodyScreen(viewModel: BodyViewModel, onBack: () -> Unit) {
                         }
                         drawLayer(page)
                     }
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-            val latest = state.latest
-            if (latest == null) {
-                EmptyCard("No weigh-ins yet", "Weigh in with your scale or log your weight to see your trends here.") { showScale = true }
-                return@Column
-            }
-            // Score first, then BMI, the weight progress and the composition analysis, with the
-            // trend chart last.
-            val scan = state.latestScan
-            if (scan != null) ScoreCard(scan, state.latestScanDate)
-            BmiCard(latest)
-            WeightHero(state, latest)
-            if (scan == null) {
-                run {
-                    EmptyCard(
-                        "Body composition",
-                        "Weigh in barefoot on your smart scale to see body fat, muscle, water, bone, visceral fat and more.",
-                    ) { showScale = true }
+                val latest = state.latest
+                if (latest == null) {
+                    EmptyCard("No weigh-ins yet", "Step on your smart scale with Platebit open, or log your weight, to see your trends here.")
+                    return@Column
                 }
-            } else {
-                CompositionCard(scan, state.previousScan, state.series)
-                run {
-                    Text(
-                        "Body composition is estimated from your weight, the scale's impedance reading and your profile, " +
-                            "using Platebit's own formulas based on published research. Use it to follow trends, not as a medical measurement.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
+                val entry = scans.getOrNull(index)
+                // The newest position shows the newest weigh-in of any kind; older ones show that measurement.
+                val weighIn = if (entry == null || index == scans.lastIndex) latest else entry.report
+                if (entry != null) {
+                    MeasurementBar(entry, index, scans.size, onOlder = { swipe.go(-1) }, onNewer = { swipe.go(1) })
                 }
-            }
-            ChartCard(state)
+                // Everything about one measurement swipes together; the trends below stay put.
+                Column(
+                    Modifier
+                        .onSizeChanged { swipe.width = it.width.toFloat().coerceAtLeast(1f) }
+                        .draggable(
+                            orientation = Orientation.Horizontal,
+                            enabled = scans.size > 1,
+                            state = rememberDraggableState { swipe.drag(it) },
+                            onDragStopped = { swipe.release(it) },
+                        )
+                        .graphicsLayer {
+                            translationX = swipe.offset
+                            alpha = 1f - 0.5f * (abs(swipe.offset) / swipe.width).coerceAtMost(1f)
+                        },
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    entry?.let { ScoreCard(it.report) }
+                    WeightBmiCard(weighIn)
+                    if (entry == null) {
+                        EmptyCard(
+                            "Body composition",
+                            "Turn on the smart scale in Settings, then step on it barefoot with Platebit open to see body fat, muscle, water and more.",
+                        )
+                    } else {
+                        CompositionCard(entry.report, scans.getOrNull(index - 1)?.report, state.series)
+                        Text(
+                            "Estimated from your weight, the scale's impedance and your profile. Good for trends, not a medical measurement.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                }
+                ChartCard(state, latest)
             }
         }
     }
+}
 
-    if (showScale) {
-        ScaleDialog(
-            profile = state.profile,
-            scale = viewModel.scale,
-            readings = viewModel::scaleReadings,
-            onDismiss = { showScale = false },
-            onSave = { kg, impedance ->
-                viewModel.logScaleWeighIn(kg, impedance)
-                showScale = false
-            },
+/**
+ * Sideways switching between measurements, like the dashboard's day swipe: the cards follow the
+ * finger, then slide out while the neighbouring measurement slides in from the other side.
+ * Swiping right goes to the older one, left to the newer one; past either end it just springs back.
+ */
+@Stable
+private class MeasurementSwipe(private val scope: CoroutineScope) {
+    var offset by mutableFloatStateOf(0f)
+    var width by mutableFloatStateOf(1f)
+    var canGoOlder = false
+    var canGoNewer = false
+    var onChange: (Int) -> Unit = {}
+    private var busy = false
+
+    fun drag(delta: Float) {
+        if (busy) return
+        val next = offset + delta
+        // Nothing further that way: pulling feels heavy.
+        offset = if ((next > 0 && !canGoOlder) || (next < 0 && !canGoNewer)) offset + delta * 0.3f else next
+    }
+
+    fun release(velocity: Float) {
+        if (busy) return
+        val far = width * 0.25f
+        when {
+            (offset > far || velocity > 1500f) && canGoOlder -> go(-1)
+            (offset < -far || velocity < -1500f) && canGoNewer -> go(1)
+            else -> settle()
+        }
+    }
+
+    /** [direction] is -1 for the older measurement and 1 for the newer one. */
+    fun go(direction: Int) {
+        if (busy) return
+        if ((direction < 0 && !canGoOlder) || (direction > 0 && !canGoNewer)) return settle()
+        busy = true
+        scope.launch {
+            val exit = if (direction < 0) width else -width
+            animate(offset, exit, animationSpec = tween(150, easing = FastOutLinearInEasing)) { v, _ -> offset = v }
+            onChange(direction)
+            animate(-exit, 0f, animationSpec = tween(230, easing = FastOutSlowInEasing)) { v, _ -> offset = v }
+            busy = false
+        }
+    }
+
+    private fun settle() {
+        busy = true
+        scope.launch {
+            animate(offset, 0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) { v, _ -> offset = v }
+            busy = false
+        }
+    }
+}
+
+/** Which measurement is on screen, with arrows to step through them. */
+@Composable
+private fun MeasurementBar(entry: ScanEntry, index: Int, count: Int, onOlder: () -> Unit, onNewer: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onOlder, enabled = index > 0) { Icon(Icons.Rounded.ChevronLeft, "Older measurement") }
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            val time = Instant.ofEpochMilli(entry.timestamp).atZone(ZoneId.systemDefault())
+            Text(
+                time.format(DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", Locale.getDefault())),
+                style = MaterialTheme.typography.titleSmall.merge(Numeric),
+            )
+            Text(
+                if (index == count - 1) "Latest measurement" else "Measurement ${index + 1} of $count",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onNewer, enabled = index < count - 1) { Icon(Icons.Rounded.ChevronRight, "Newer measurement") }
+    }
+}
+
+// ---- Weight and BMI ------------------------------------------------------------------------------
+
+/** The weight of one weigh-in with its BMI, range bar and healthy weight, in one card. */
+@Composable
+private fun WeightBmiCard(report: BodyReport) {
+    val reading = report.readings.first { it.metric == Metric.BMI }
+    MorselCard(padding = 16.dp) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Text("Weight", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(report.weightKg.format(1), style = MaterialTheme.typography.headlineMedium.merge(Numeric))
+                    Text(" kg", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("BMI", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    reading.segment?.let {
+                        Pill(it.label, it.tone.color())
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(report.bmi.format(1), style = MaterialTheme.typography.headlineMedium.merge(Numeric))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        BandBar(reading.band!!, reading.value, decimals = 1)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Healthy for your height: ${report.healthyWeight.start.format(1)}–${report.healthyWeight.endInclusive.format(1)} kg · BMI 22 at ${report.idealWeightKg.format(1)} kg",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
-// ---- Weight at a glance --------------------------------------------------------------------------
-
+/** Where the weight is heading: trend, recent changes and progress to the goal (shown with the trends). */
 @Composable
-private fun WeightHero(state: BodyState, latest: BodyReport) {
+private fun WeightProgress(state: BodyState, latest: BodyReport) {
     val profile = state.profile ?: return
     val trend = state.trendWeight ?: latest.weightKg
-    MorselCard {
-        Text("Weight", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(latest.weightKg.format(1), style = MaterialTheme.typography.displaySmall.merge(Numeric))
-            Text(" kg", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-            Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Trend", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${trend.format(1)} kg", style = MaterialTheme.typography.titleMedium.merge(Numeric))
-            }
+    val losing = profile.goalWeightKg < profile.startWeightKg
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Trend ${trend.format(1)} kg", style = MaterialTheme.typography.titleSmall.merge(Numeric), modifier = Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            state.change7?.let { ChangePill("7d", it, losing) }
+            state.change30?.let { ChangePill("30d", it, losing) }
         }
-        Spacer(Modifier.height(10.dp))
-        val losing = profile.goalWeightKg < profile.startWeightKg
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            state.change7?.let { ChangePill("7 days", it, losing) }
-            state.change30?.let { ChangePill("30 days", it, losing) }
-        }
-        Spacer(Modifier.height(16.dp))
-        val total = profile.goalWeightKg - profile.startWeightKg
-        val done = trend - profile.startWeightKg
-        val progress = if (abs(total) < 0.05) 1f else (done / total).toFloat().coerceIn(0f, 1f)
-        ProgressLine(progress, MaterialTheme.colorScheme.primary, height = 8.dp)
-        Spacer(Modifier.height(8.dp))
-        Row {
-            Text("Start ${profile.startWeightKg.format(1)}", style = MaterialTheme.typography.labelMedium.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            val left = profile.goalWeightKg - trend
-            Text(
-                if ((losing && left >= -0.05) || (!losing && left <= 0.05)) "Goal reached" else "${abs(left).format(1)} kg to go",
-                style = MaterialTheme.typography.labelMedium.merge(Numeric),
-            )
-            Spacer(Modifier.weight(1f))
-            Text("Goal ${profile.goalWeightKg.format(1)}", style = MaterialTheme.typography.labelMedium.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    }
+    Spacer(Modifier.height(10.dp))
+    val total = profile.goalWeightKg - profile.startWeightKg
+    val done = trend - profile.startWeightKg
+    val progress = if (abs(total) < 0.05) 1f else (done / total).toFloat().coerceIn(0f, 1f)
+    ProgressLine(progress, MaterialTheme.colorScheme.primary, height = 6.dp)
+    Spacer(Modifier.height(6.dp))
+    Row {
+        Text("Start ${profile.startWeightKg.format(1)}", style = MaterialTheme.typography.labelSmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        val left = profile.goalWeightKg - trend
+        Text(
+            if ((losing && left >= -0.05) || (!losing && left <= 0.05)) "Goal reached" else "${abs(left).format(1)} kg to go",
+            style = MaterialTheme.typography.labelSmall.merge(Numeric),
+        )
+        Spacer(Modifier.weight(1f))
+        Text("Goal ${profile.goalWeightKg.format(1)}", style = MaterialTheme.typography.labelSmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -275,11 +403,10 @@ private fun ChangePill(label: String, change: Double, losing: Boolean) {
         if (abs(change) < 0.05) MaterialTheme.colorScheme.onSurfaceVariant else if (good) ToneColors.good else ToneColors.high,
     )
 }
-
 // ---- Trends --------------------------------------------------------------------------------------
 
 @Composable
-private fun ChartCard(state: BodyState) {
+private fun ChartCard(state: BodyState, latest: BodyReport) {
     val available = CHART_METRICS.filter { !state.series[it].isNullOrEmpty() }
     var picked by rememberSaveable { mutableStateOf(Metric.WEIGHT) }
     var span by rememberSaveable { mutableStateOf(Span.M3) }
@@ -290,7 +417,9 @@ private fun ChartCard(state: BodyState) {
 
     MorselCard {
         Text("Trends", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
+        WeightProgress(state, latest)
+        Spacer(Modifier.height(14.dp))
         Row(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -321,38 +450,11 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ---- BMI -----------------------------------------------------------------------------------------
-
-@Composable
-private fun BmiCard(report: BodyReport) {
-    val reading = report.readings.first { it.metric == Metric.BMI }
-    MorselCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            MetricBadge(Metric.BMI, 30.dp)
-            Spacer(Modifier.width(10.dp))
-            Text("BMI", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.weight(1f))
-            reading.segment?.let { Pill(it.label, it.tone.color()) }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(report.bmi.format(1), style = MaterialTheme.typography.headlineMedium.merge(Numeric))
-        Spacer(Modifier.height(12.dp))
-        BandBar(reading.band!!, reading.value, decimals = 1)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Healthy weight for your height: ${report.healthyWeight.start.format(1)}–${report.healthyWeight.endInclusive.format(1)} kg. " +
-                "BMI 22 would be ${report.idealWeightKg.format(1)} kg.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
 // ---- Score and body type -------------------------------------------------------------------------
 
 /** A compact summary: the score, and in plain words what it says about fat and muscle. */
 @Composable
-private fun ScoreCard(scan: BodyReport, date: LocalDate?) {
+private fun ScoreCard(scan: BodyReport) {
     val score = scan.score ?: return
     val type = scan.type ?: return
     MorselCard(padding = 14.dp) {
@@ -360,16 +462,7 @@ private fun ScoreCard(scan: BodyReport, date: LocalDate?) {
             ScoreRing(score)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Body score", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    date?.let {
-                        Text(
-                            it.format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                Text("Body score", style = MaterialTheme.typography.titleSmall)
                 Text(type.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 type.tip?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
@@ -407,7 +500,7 @@ private fun CompositionCard(scan: BodyReport, previous: BodyReport?, series: Map
     }
     var open by rememberSaveable { mutableStateOf<Metric?>(null) }
     MorselCard(padding = 0.dp) {
-        Text("Body composition", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 6.dp))
+        Text("Body composition", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
         rows.forEachIndexed { index, (reading, details) ->
             if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 18.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             val shown = SHOWN_AS[reading.metric]?.let { m -> scan.readings.firstOrNull { it.metric == m } } ?: reading
@@ -446,35 +539,29 @@ private fun MetricRow(
             .fillMaxWidth()
             .clickable(onClick = onToggle)
             .animateContentSize()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MetricBadge(metric)
+            MetricBadge(metric, 30.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(metric.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val step = if (metric.decimals == 0) 0.5 else 0.05
-                change?.takeIf { abs(it) >= step }?.let {
-                    Text(
-                        (if (it > 0) "+" else "−") + abs(it).withUnit() + " since last",
-                        style = MaterialTheme.typography.labelSmall.merge(Numeric),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+                val sub = listOfNotNull(
+                    share?.let { it.value.withUnit(it.metric) },
+                    change?.takeIf { abs(it) >= step }?.let { (if (it > 0) "+" else "−") + abs(it).withUnit() + if (share == null) " vs last" else "" },
+                ).joinToString(" · ")
+                if (sub.isNotEmpty()) {
+                    Text(sub, style = MaterialTheme.typography.labelSmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
             Spacer(Modifier.width(8.dp))
-            // Value over its status, so a long name never has to wrap beside them.
-            Column(horizontalAlignment = Alignment.End) {
-                Text(shown.value.withUnit(), style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1)
-                share?.let {
-                    Text(it.value.withUnit(it.metric), style = MaterialTheme.typography.labelSmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
-                reading.segment?.let {
-                    Spacer(Modifier.height(3.dp))
-                    Pill(it.label, it.tone.color())
-                }
+            // Status and value side by side keep every row one line tall.
+            reading.segment?.let {
+                Pill(it.label, it.tone.color())
+                Spacer(Modifier.width(8.dp))
             }
+            Text(shown.value.withUnit(), style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1)
             Spacer(Modifier.width(6.dp))
             Icon(
                 if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
@@ -577,13 +664,11 @@ private fun BandBar(band: Band, value: Double, decimals: Int) {
 }
 
 @Composable
-private fun EmptyCard(title: String, text: String, onWeighIn: () -> Unit) {
+private fun EmptyCard(title: String, text: String) {
     MorselCard {
         Text(title, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(6.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(14.dp))
-        SecondaryButton("Weigh in", onWeighIn, Modifier.fillMaxWidth(), icon = Icons.Rounded.MonitorWeight, accent = true)
     }
 }
 
