@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joji228/Platebit/releases/download/v1.1.6/Platebit-1.1.6.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" alt="Download APK"></a>
+  <a href="https://github.com/Joji228/Platebit/releases/download/v1.1.7/Platebit-1.1.7.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" alt="Download APK"></a>
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="MIT license"></a>
 </p>
@@ -32,7 +32,7 @@
 
 ## Install
 
-1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.1.6/Platebit-1.1.6.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
+1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.1.7/Platebit-1.1.7.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
 2. Open **Settings → AI engine** and paste an API key for the service you want to use.
 3. Tap the camera and scan a meal.
 
