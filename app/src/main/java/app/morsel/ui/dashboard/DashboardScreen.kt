@@ -59,7 +59,6 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.foundation.layout.heightIn
 import app.morsel.data.db.WeightEntity
 import java.time.Instant
@@ -78,7 +77,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +94,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
 import app.morsel.domain.MealType
+import app.morsel.domain.BodyCompositionCalc
 import app.morsel.domain.UserProfile
 import app.morsel.ui.components.MacroStat
 import app.morsel.ui.components.MorselCard
@@ -209,7 +208,6 @@ fun DashboardScreen(
     val context = LocalContext.current
     var showWeightDialog by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
-    var showScale by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -267,7 +265,6 @@ fun DashboardScreen(
                     scaleEnabled = scaleEnabled,
                     onLog = { showWeightDialog = true },
                     onHistory = { showHistory = true },
-                    onScale = { showScale = true },
                     onOpen = onOpenBody,
                 )
             }
@@ -331,24 +328,6 @@ fun DashboardScreen(
             onLog = { fact, name, grams, type ->
                 viewModel.quickLog(fact, name, grams, type)
                 Toast.makeText(context, "Logged  ·  kcal", Toast.LENGTH_SHORT).show()
-            },
-        )
-    }
-    if (showScale) {
-        DisposableEffect(Unit) {
-            viewModel.setManualWeighInOpen(true)
-            onDispose { viewModel.setManualWeighInOpen(false) }
-        }
-        ScaleDialog(
-            profile = state.profile,
-            scale = viewModel.scale,
-            readings = viewModel::scaleReadings,
-            onDismiss = { showScale = false },
-            onSave = { kg, impedance ->
-                viewModel.logScaleWeighIn(kg, impedance)
-                showScale = false
-                // Straight to the analysis of the weigh-in that was just taken.
-                onOpenBody()
             },
         )
     }
@@ -525,7 +504,6 @@ private fun WeightCard(
     scaleEnabled: Boolean,
     onLog: () -> Unit,
     onHistory: () -> Unit,
-    onScale: () -> Unit,
     onOpen: () -> Unit,
 ) {
     val profile = state.profile ?: return
@@ -565,20 +543,10 @@ private fun WeightCard(
             if (state.plan.weighIns.isNotEmpty()) {
                 RoundIconButton(Icons.Rounded.History, "Weigh-in history", onHistory, size = 40.dp)
             }
-            if (!scaleEnabled) {
-                // Kept in the header so the floating camera button never covers it.
-                Spacer(Modifier.width(8.dp))
-                SecondaryButton("Log", onLog, icon = Icons.Rounded.Add)
-            }
-        }
-        if (scaleEnabled) {
-            // Their own row under the title, so neither button is squeezed narrow enough to wrap its label.
-            // Kept above the chart so the floating camera button never covers them.
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton("Weigh in", onScale, Modifier.weight(1f), icon = Icons.Rounded.MonitorWeight, accent = true)
-                SecondaryButton("Log", onLog, Modifier.weight(1f), icon = Icons.Rounded.Add)
-            }
+            // Kept in the header so the floating camera button never covers it. With the smart scale
+            // on, weigh-ins are picked up on their own, so manual logging is the only button needed.
+            Spacer(Modifier.width(8.dp))
+            SecondaryButton("Log", onLog, icon = Icons.Rounded.Add)
         }
         Spacer(Modifier.height(14.dp))
         Box(contentAlignment = Alignment.Center) {
@@ -841,4 +809,13 @@ private fun WeightDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double
         confirmButton = { TextButton(onClick = { onSave(kg) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * A short one-line summary of a weigh-in's composition, or null for a manual entry. Worked out
+ * again from the stored impedance so it always agrees with the Body screen.
+ */
+private fun WeightEntity.compositionLine(profile: UserProfile?): String? {
+    val c = profile?.let { BodyCompositionCalc.compute(kg, impedance, it) } ?: return null
+    return "Fat ${c.fatPct.format(1)} % · Muscle ${c.musclePct(kg).format(1)} % · Water ${c.waterPct.format(1)} %"
 }

@@ -87,7 +87,6 @@ private enum class Stage { WEIGHING, MEASURING, DONE }
 @Composable
 fun AutoWeighIn(container: AppContainer, onOpenBody: () -> Unit) {
     val enabled by container.settings.scaleEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val manualOpen by container.manualWeighInOpen.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
 
@@ -122,8 +121,8 @@ fun AutoWeighIn(container: AppContainer, onOpenBody: () -> Unit) {
         if (WeighInDetector.looksLikeYou(done.kg, reference)) save(done) else askAbout = done
     }
 
-    LaunchedEffect(enabled, manualOpen) {
-        if (!enabled || manualOpen) {
+    LaunchedEffect(enabled) {
+        if (!enabled) {
             if (stage != Stage.DONE) close()
             return@LaunchedEffect
         }

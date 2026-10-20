@@ -10,7 +10,6 @@ import app.morsel.domain.MealType
 import app.morsel.data.db.FoodItemEntity
 import app.morsel.data.db.MealEntity
 import app.morsel.data.FoodFact
-import app.morsel.domain.BodyCompositionCalc
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -83,24 +82,8 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
         viewModelScope.launch { app.repository.logWeight(kg) }
     }
 
-    /** Off by default; the Weigh in button and the Body screen only appear once it's turned on in Settings. */
+    /** Off by default; the Body screen and composition line only appear once it's turned on in Settings. */
     val scaleEnabled = app.settings.scaleEnabled
-
-    val scale get() = app.scale
-
-    /** Live frames from the smart scale for as long as the weigh-in dialog is open. */
-    fun scaleReadings() = app.scale.readings()
-
-    fun setManualWeighInOpen(open: Boolean) {
-        app.manualWeighInOpen.value = open
-    }
-
-    /** Saves a smart-scale weigh-in; body composition is worked out here from the profile. */
-    fun logScaleWeighIn(kg: Double, impedance: Int?) {
-        val profile = state.value.profile
-        val composition = profile?.let { BodyCompositionCalc.compute(kg, impedance, it) }
-        viewModelScope.launch { app.repository.logScaleWeighIn(kg, impedance, composition) }
-    }
 
     /** Quick add is offered only to users who turned on Open Food Facts. */
     val foodFactsEnabled = app.settings.useFoodFacts

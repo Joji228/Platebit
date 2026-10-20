@@ -58,9 +58,6 @@ class AppContainer(context: Context) {
 
     /** The free Open Food Facts product database; only used when turned on in Settings. */
     val foodFacts = OpenFoodFacts(runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1", http)
-
-    /** True while the manual Weigh in dialog is open, so the automatic listener steps aside. */
-    val manualWeighInOpen = MutableStateFlow(false)
     var draft: MealDraft? = null
 
     /** The day the dashboard is showing. Water taps go to it; scanned meals always go to today. */

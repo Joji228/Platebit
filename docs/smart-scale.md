@@ -11,7 +11,6 @@ here is copied from the code; if they ever disagree, the code wins.
 | Bluetooth scanner (listen only) | `ble/MiScaleScanner.kt` |
 | Hands-free weigh-in rules | `ble/WeighInDetector.kt` |
 | Full-screen dial and saving | `ui/scale/AutoWeighIn.kt` |
-| Manual weigh-in dialog | `ui/dashboard/ScaleDialog.kt` |
 | Formulas, ranges, score | `domain/BodyComposition.kt` |
 | Body screen | `ui/body/BodyScreen.kt`, `BodyViewModel.kt` |
 | Tests | `test/.../ble/MiScaleParserTest.kt`, `WeighInDetectorTest.kt`, `domain/BodyCompositionTest.kt`, `BodyAnalysisTest`, `androidTest/.../MigrationTest.kt` |
@@ -41,8 +40,7 @@ here is copied from the code; if they ever disagree, the code wins.
 ## 2. Hands-free weigh-ins (`WeighInDetector`, `AutoWeighIn`)
 
 - Listening only happens while Platebit is **on screen** (`repeatOnLifecycle(STARTED)`) **and** the
-  scale is turned on in Settings. Never in the background. It pauses while the manual Weigh in
-  dialog is open. Bluetooth off or no permission just means nothing is heard; it retries every 5 s.
+  scale is turned on in Settings. Never in the background. Bluetooth off or no permission just means nothing is heard; it retries every 5 s.
 - **Sequence:** unstable frames update the live weight. A stable frame without impedance starts
   "measuring body composition". A stable frame **with** impedance finishes the weigh-in.
 - **Weight only:** if no impedance arrives **12 s** after the weight settled, the weight is saved alone.
@@ -146,3 +144,5 @@ and 75 % of (lean − bone).
 - **1.0.1:** hands-free weigh-ins.
 - **Later:** the full-screen dial, bone and muscle in kg, and swiping between measurements on the
   Body screen. Scalebit itself was then retired; this page and the code are the reference.
+- **1.1.8:** the manual *Weigh in* button and its dialog were removed, since weigh-ins are picked
+  up on their own. *Log* (typing a weight) stays.

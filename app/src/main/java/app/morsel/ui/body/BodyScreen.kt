@@ -99,7 +99,6 @@ import app.morsel.ui.components.RoundIconButton
 import app.morsel.ui.components.SecondaryButton
 import app.morsel.ui.components.TrendChart
 import app.morsel.ui.components.format
-import app.morsel.ui.dashboard.ScaleDialog
 import app.morsel.ui.theme.Numeric
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
