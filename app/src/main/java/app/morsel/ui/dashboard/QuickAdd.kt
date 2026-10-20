@@ -191,7 +191,7 @@ fun QuickAddDialog(
                         query = it
                         picked = null
                     },
-                    placeholder = { Text("Search a food, e.g. Kit Kat") },
+                    placeholder = { Text("Search a food") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailingIcon = {
                         when {
