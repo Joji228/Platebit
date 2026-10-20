@@ -81,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -156,6 +157,16 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
 
             item { GroupLabel("Your engines") }
+            if (ai.activeEngines.size > 1) {
+                item {
+                    Text(
+                        "Tap an engine to use it for scans and the coach.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                    )
+                }
+            }
             items(ai.activeEngines, key = { it.name }) { provider ->
                 EngineCard(
                     provider = provider,
@@ -394,7 +405,10 @@ private fun RefreshButton(spinning: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** One engine: its service (tap to change), whether it's the one used for scans, key, model. */
+/**
+ * One engine. Tapping anywhere on the card makes it the one Platebit uses (scans and the coach);
+ * its rows open their own sheets, and the name opens the service list.
+ */
 @Composable
 private fun EngineCard(
     provider: Provider,
@@ -409,15 +423,15 @@ private fun EngineCard(
     val used = provider == ai.primary
     val primary = MaterialTheme.colorScheme.primary
     Surface(
+        onClick = onUse,
         shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = if (used) BorderStroke(1.dp, primary.copy(alpha = 0.45f)) else null,
+        color = if (used) primary.copy(alpha = 0.07f).compositeOver(MaterialTheme.colorScheme.surfaceContainer) else MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(if (used) 1.5.dp else 1.dp, if (used) primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onService)
                     .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -436,18 +450,36 @@ private fun EngineCard(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The name is its own small button: it switches the service, the card picks the engine.
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onService)
+                            .padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(provider.title, style = MaterialTheme.typography.titleMedium)
                         Icon(Icons.Rounded.ExpandMore, "Choose service", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    provider.byline?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    Text(
+                        if (used) provider.byline ?: "Reads your photos and runs the coach" else "Tap to use this engine",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 if (used) {
-                    Pill("Used for scans", primary)
-                } else {
-                    TextButton(onClick = onUse) { Text("Use for scans") }
+                    Row(
+                        Modifier
+                            .background(primary, RoundedCornerShape(50))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Check, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("In use", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
                 if (onRemove != null) {
                     IconButton(onClick = onRemove) {
