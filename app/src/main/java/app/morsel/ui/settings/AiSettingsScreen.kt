@@ -551,6 +551,12 @@ private fun Sheet(
     title: String,
     subtitle: String? = null,
     onDismiss: () -> Unit,
+    /**
+     * Whether the whole sheet scrolls. A sheet with its own scrolling list (the model picker) turns
+     * this off: a list inside a scrolling sheet inside a draggable sheet made the three fight over
+     * every upward swipe, so the list bounced up and down.
+     */
+    scrollable: Boolean = true,
     content: @Composable ColumnScope.(close: () -> Unit) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -568,7 +574,7 @@ private fun Sheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
         ) {
             Text(title, style = MaterialTheme.typography.titleLarge)
@@ -726,6 +732,7 @@ private fun ModelSheet(provider: Provider, selected: String, viewModel: Settings
             Provider.CUSTOM -> "Name a model that can read images, exactly as the service spells it."
         },
         onDismiss = onDismiss,
+        scrollable = false,
     ) { close ->
         val ok = check as? KeyCheck.Ok
         val models = ok?.models.orEmpty()
@@ -759,7 +766,12 @@ private fun ModelSheet(provider: Provider, selected: String, viewModel: Settings
         val shown = models.filter { m ->
             (!freeOnly || OpenRouterModels.isFree(m)) && words.all { it in m.lowercase() }
         }
-        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+        // The only thing that scrolls in this sheet; it gives up room when the keyboard is open.
+        LazyColumn(
+            Modifier
+                .weight(1f, fill = false)
+                .heightIn(max = 420.dp),
+        ) {
             if (provider != Provider.CUSTOM && words.isEmpty() && !freeOnly) {
                 item {
                     Option(ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic", "Picks a good model for you", selected = selected.isBlank()) {
