@@ -76,6 +76,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -202,6 +204,9 @@ fun DashboardScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scaleEnabled by viewModel.scaleEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val foodFactsOn by viewModel.foodFactsEnabled.collectAsStateWithLifecycle(initialValue = false)
+    var showQuickAdd by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     var showWeightDialog by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showScale by remember { mutableStateOf(false) }
@@ -242,6 +247,7 @@ fun DashboardScreen(
                     onPrev = { swipe.go(-1) },
                     onNext = { swipe.go(1) },
                     onSettings = onSettings,
+                    onQuickAdd = if (foodFactsOn) ({ showQuickAdd = true }) else null,
                 )
             }
             // Until the first real numbers arrive, show nothing rather than placeholder targets.
@@ -318,6 +324,17 @@ fun DashboardScreen(
             onDismiss = { showHistory = false },
         )
     }
+    if (showQuickAdd) {
+        QuickAddDialog(
+            search = viewModel::searchFoods,
+            onDismiss = { showQuickAdd = false },
+            onLog = { fact, name, grams, type ->
+                viewModel.quickLog(fact, name, grams, type)
+                showQuickAdd = false
+                Toast.makeText(context, "Logged  ·  kcal", Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
     if (showScale) {
         DisposableEffect(Unit) {
             viewModel.setManualWeighInOpen(true)
@@ -349,7 +366,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit) {
+private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onSettings: () -> Unit, onQuickAdd: (() -> Unit)?) {
     val title = when (date) {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
@@ -381,6 +398,10 @@ private fun Header(date: LocalDate, today: LocalDate, onPrev: () -> Unit, onNext
                     )
                 }
             }
+        }
+        onQuickAdd?.let {
+            RoundIconButton(Icons.Rounded.Add, "Quick add a food", it, size = 44.dp)
+            Spacer(Modifier.width(8.dp))
         }
         RoundIconButton(Icons.Rounded.Settings, "Settings", onSettings, size = 44.dp)
     }

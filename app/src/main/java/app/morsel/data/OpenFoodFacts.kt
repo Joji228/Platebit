@@ -28,6 +28,8 @@ data class FoodFact(
     val proteinPer100: Double,
     val carbsPer100: Double,
     val fatPer100: Double,
+    /** One serving in grams, when the product lists it (a Kit Kat 4-finger bar is 41.5 g). */
+    val servingGrams: Double? = null,
 ) {
     /** "Oreo · Oreo Original" style label, without repeating the brand. */
     val label: String get() = if (brand.isNullOrBlank() || name.contains(brand, ignoreCase = true)) name else "$brand $name"
@@ -50,7 +52,7 @@ class OpenFoodFacts(version: String) {
         val url = "https://search.openfoodfacts.org/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", query.trim())
             .addQueryParameter("page_size", (size * 2).toString()) // some hits lack nutrition and are dropped
-            .addQueryParameter("fields", "code,product_name,brands,nutriments")
+            .addQueryParameter("fields", "code,product_name,brands,nutriments,serving_quantity")
             .build()
         val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
         val body = http.newCall(request).await()
@@ -111,6 +113,7 @@ object FoodFactsParser {
             proteinPer100 = num("proteins_100g") ?: 0.0,
             carbsPer100 = num("carbohydrates_100g") ?: 0.0,
             fatPer100 = num("fat_100g") ?: 0.0,
+            servingGrams = (hit["serving_quantity"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 1.0..2000.0 },
         )
     }
 

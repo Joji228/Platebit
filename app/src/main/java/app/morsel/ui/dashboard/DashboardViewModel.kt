@@ -6,6 +6,10 @@ import app.morsel.AppContainer
 import app.morsel.data.PlanState
 import app.morsel.data.db.MealWithItems
 import app.morsel.data.db.macros
+import app.morsel.domain.MealType
+import app.morsel.data.db.FoodItemEntity
+import app.morsel.data.db.MealEntity
+import app.morsel.data.FoodFact
 import app.morsel.domain.BodyCompositionCalc
 import app.morsel.domain.Macros
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -94,6 +98,41 @@ class DashboardViewModel(private val app: AppContainer) : ViewModel() {
         val profile = state.value.profile
         val composition = profile?.let { BodyCompositionCalc.compute(kg, impedance, it) }
         viewModelScope.launch { app.repository.logScaleWeighIn(kg, impedance, composition) }
+    }
+
+    /** Quick add is offered only to users who turned on Open Food Facts. */
+    val foodFactsEnabled = app.settings.useFoodFacts
+
+    suspend fun searchFoods(query: String): List<FoodFact> = app.foodFacts.search(query)
+
+    /** Logs one Open Food Facts product as its own meal, for today like every new meal. */
+    fun quickLog(fact: FoodFact, name: String, grams: Double, type: MealType) {
+        viewModelScope.launch {
+            val today = app.clock.today.value
+            app.repository.saveMeal(
+                MealEntity(
+                    date = today.toString(),
+                    timestamp = System.currentTimeMillis(),
+                    mealType = type.name,
+                    name = name,
+                    photoPath = null,
+                    source = "Open Food Facts",
+                    note = null,
+                ),
+                listOf(
+                    FoodItemEntity(
+                        mealId = 0,
+                        name = fact.label,
+                        grams = grams,
+                        kcalPer100 = fact.kcalPer100,
+                        proteinPer100 = fact.proteinPer100,
+                        carbsPer100 = fact.carbsPer100,
+                        fatPer100 = fact.fatPer100,
+                    ),
+                ),
+            )
+            app.viewedDay.value = today
+        }
     }
 
     /** Removes a meal and its photo. */
