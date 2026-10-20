@@ -93,6 +93,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.ai.ApiBalances
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapHoriz
+import app.morsel.ai.OpenRouterModels
 import app.morsel.data.AiSettings
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
@@ -450,17 +454,9 @@ private fun EngineCard(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    // The name is its own small button: it switches the service, the card picks the engine.
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onService)
-                            .padding(end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(provider.title, style = MaterialTheme.typography.titleMedium)
-                        Icon(Icons.Rounded.ExpandMore, "Choose service", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    // Plain text: the whole card picks the engine, and the Service row below switches it.
+                    // (A small tappable name here grabbed taps meant for the card.)
+                    Text(provider.title, style = MaterialTheme.typography.titleMedium)
                     Text(
                         if (used) provider.byline ?: "Reads your photos and runs the coach" else "Tap to use this engine",
                         style = MaterialTheme.typography.bodySmall,
@@ -487,6 +483,7 @@ private fun EngineCard(
                     }
                 }
             }
+            SettingRow(icon = Icons.Rounded.SwapHoriz, title = "Service", value = provider.title, onClick = onService)
             val key = ai.keyFor(provider)
             val missingUrl = provider.needsBaseUrl && ai.customBaseUrl.isBlank()
             SettingRow(
@@ -587,7 +584,7 @@ private fun Sheet(
 
 /** A choice in a sheet: rounded, the picked one tinted with the accent colour and ticked. */
 @Composable
-private fun Option(title: String, subtitle: String? = null, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+private fun Option(title: String, subtitle: String? = null, selected: Boolean, enabled: Boolean = true, badge: String? = null, onClick: () -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
     Surface(
         onClick = onClick,
@@ -608,7 +605,14 @@ private fun Option(title: String, subtitle: String? = null, selected: Boolean, e
                 )
                 subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = primary)
+            badge?.let {
+                Spacer(Modifier.width(8.dp))
+                Pill(it, primary)
+            }
+            if (selected) {
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Rounded.CheckCircle, null, tint = primary)
+            }
         }
     }
 }
@@ -718,22 +722,66 @@ private fun ModelSheet(provider: Provider, selected: String, viewModel: Settings
             Provider.GEMINI -> "Flash models are fast and on the free tier."
             Provider.OPENAI -> "Automatic picks a recent mini model: fast, cheap and able to read photos."
             Provider.ANTHROPIC -> "Automatic picks a Haiku model: fast, cheap and able to read photos."
+            Provider.OPENROUTER -> "Only models that can read photos are listed. Free ones cost nothing but have daily limits and can be busy."
             Provider.CUSTOM -> "Name a model that can read images, exactly as the service spells it."
         },
         onDismiss = onDismiss,
     ) { close ->
         val ok = check as? KeyCheck.Ok
-        Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-            if (provider != Provider.CUSTOM) {
-                Option(ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic", "Picks a good model for you", selected = selected.isBlank()) {
-                    viewModel.setModel(provider, "")
+        val models = ok?.models.orEmpty()
+        val canFilterFree = provider == Provider.OPENROUTER
+        var query by remember { mutableStateOf("") }
+        var freeOnly by remember { mutableStateOf(false) }
+        // Long lists (OpenRouter has hundreds) get a search box, and OpenRouter a Free filter.
+        if (models.size > 12 || canFilterFree) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { Text("Search ${models.size} models") },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear search") }
+                },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (canFilterFree) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChipButton("All", selected = !freeOnly) { freeOnly = false }
+                    FilterChipButton("Free only · ${models.count(OpenRouterModels::isFree)}", selected = freeOnly) { freeOnly = true }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        val words = query.trim().lowercase().split(' ').filter { it.isNotEmpty() }
+        val shown = models.filter { m ->
+            (!freeOnly || OpenRouterModels.isFree(m)) && words.all { it in m.lowercase() }
+        }
+        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+            if (provider != Provider.CUSTOM && words.isEmpty() && !freeOnly) {
+                item {
+                    Option(ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic", "Picks a good model for you", selected = selected.isBlank()) {
+                        viewModel.setModel(provider, "")
+                        close()
+                    }
+                }
+            }
+            items(shown, key = { it }) { model ->
+                Option(model, selected = model == selected, badge = if (canFilterFree && OpenRouterModels.isFree(model)) "Free" else null) {
+                    viewModel.setModel(provider, model)
                     close()
                 }
             }
-            ok?.models.orEmpty().forEach { model ->
-                Option(model, selected = model == selected) {
-                    viewModel.setModel(provider, model)
-                    close()
+            if (ok != null && shown.isEmpty()) {
+                item {
+                    Text(
+                        if (freeOnly) "No free models match." else "No models match.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
                 }
             }
         }
@@ -757,5 +805,18 @@ private fun ModelSheet(provider: Provider, selected: String, viewModel: Settings
                 close()
             }
         }
+    }
+}
+
+/** A small pill toggle, filled with the accent colour when on. */
+@Composable
+private fun FilterChipButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
     }
 }

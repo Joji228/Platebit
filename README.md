@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.7/Platebit-1.3.7.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" width="230" alt="Download APK"></a>
+  <a href="https://github.com/Joji228/Platebit/releases/download/v1.3.8/Platebit-1.3.8.apk"><img src="https://img.shields.io/badge/Download-APK-C5F25A?style=for-the-badge&logo=android&logoColor=black" width="230" alt="Download APK"></a>
 </p>
 
 <p align="center">
@@ -25,12 +25,12 @@
 - 📸 **Photo to calories.** Take a picture of your plate (or a nutrition label) and get calories, protein, carbs and fat. One tap on **Snap and analyze** (or a volume key) does it all. Adjust the grams (hold + or − to keep going) or the portion and it recalculates instantly.
 - 📊 **One clean diary.** Calories, macros, water and a weight trend you can swipe through day by day; swipe past today to jump straight to the camera. Forgot something? Swipe back and add food (the + on Meals) or a weigh-in to any past day; tap **Diary** to come back to today. Hold a meal to delete it, and pick one of 5 accent colors.
 - 🧠 **Smart target (optional).** Turn it on in Settings and, after a couple of weeks, it compares what you eat with how your weight moves and tunes your daily calories to your real metabolism.
-- 🔑 **Bring your own AI.** Use DeepSeek, Gemini, OpenAI, Claude, or any OpenAI-compatible service, and set up to 4 side by side. You pay the provider directly; Platebit has no servers. With DeepSeek (or OpenRouter) the AI engine screen shows how much credit you have left.
+- 🔑 **Bring your own AI.** Use DeepSeek, Gemini, OpenAI, Claude, OpenRouter (search hundreds of models, or filter to the free ones), or any OpenAI-compatible service, and set up to 4 side by side. You pay the provider directly; Platebit has no servers. With DeepSeek or OpenRouter the AI engine screen shows how much credit you have left.
 - 🔒 **Private by design.** No account, no ads, no tracking. Your meals stay on your phone, and photos go only to the AI you pick. The optional AI coach sends that same AI a summary of your data when you ask it something, never photos or keys.
 
 ## Install
 
-1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.7/Platebit-1.3.7.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
+1. [Download the APK](https://github.com/Joji228/Platebit/releases/download/v1.3.8/Platebit-1.3.8.apk) on your phone and open it. Allow "Install unknown apps" if Android asks.
 2. Open **Settings → AI engine** and paste an API key for the service you want to use.
 3. Tap the camera and scan a meal.
 

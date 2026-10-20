@@ -33,6 +33,25 @@ data class ApiBalance(
     }
 }
 
+/** Reading OpenRouter's model list: which models take images, and which cost nothing. */
+object OpenRouterModels {
+    /** OpenRouter's own router that picks any free model. */
+    const val FREE_ROUTER = "openrouter/free"
+
+    fun isFree(id: String) = id.endsWith(":free") || id == FREE_ROUTER
+
+    /** Models that read images and answer in text, free ones first, then by name. */
+    fun visionModels(root: JsonObject): List<String> =
+        root["data"]?.let { runCatching { it.jsonArray }.getOrNull() }.orEmpty().mapNotNull { el ->
+            val m = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
+            val id = m["id"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() } ?: return@mapNotNull null
+            val arch = m["architecture"]?.let { runCatching { it.jsonObject }.getOrNull() }
+            fun list(key: String) = arch?.get(key)?.let { runCatching { it.jsonArray }.getOrNull() }.orEmpty()
+                .mapNotNull { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
+            id.takeIf { "image" in list("input_modalities") && "text" in list("output_modalities") }
+        }.distinct().sortedWith(compareBy({ !isFree(it) }, { it }))
+}
+
 /**
  * Which engines can report their balance, and reading their answers. Only DeepSeek and OpenRouter
  * offer this to an API key; OpenAI, Anthropic and Google don't, so they show no balance.
@@ -41,7 +60,7 @@ object ApiBalances {
     const val DEEPSEEK_URL = "https://api.deepseek.com/user/balance"
 
     fun supported(provider: Provider, ai: AiSettings): Boolean = when (provider) {
-        Provider.DEEPSEEK -> true
+        Provider.DEEPSEEK, Provider.OPENROUTER -> true
         Provider.CUSTOM -> isOpenRouter(ai.baseUrlFor(provider))
         else -> false
     }

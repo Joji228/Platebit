@@ -22,13 +22,21 @@ enum class Provider(
     GEMINI("Gemini", "Google", "gemini", ApiKind.GEMINI, null, "Create a free key at aistudio.google.com"),
     OPENAI("OpenAI", "OpenAI", "openai", ApiKind.OPENAI_COMPATIBLE, "https://api.openai.com/v1", "Create a key at platform.openai.com"),
     ANTHROPIC("Claude", "Anthropic", "anthropic", ApiKind.ANTHROPIC, null, "Create a key at console.anthropic.com"),
+    OPENROUTER(
+        "OpenRouter",
+        "Hundreds of models, some free",
+        "openrouter",
+        ApiKind.OPENAI_COMPATIBLE,
+        "https://openrouter.ai/api/v1",
+        "Create a key at openrouter.ai/keys. Models ending in :free cost nothing, with daily limits.",
+    ),
     CUSTOM(
         "Custom",
         "Any OpenAI-compatible service",
         "custom",
         ApiKind.OPENAI_COMPATIBLE,
         null,
-        "Works with OpenRouter, Groq, Mistral, xAI, a local server and more. Enter its address, key and a vision-capable model.",
+        "Works with Groq, Mistral, xAI, a local server and more. Enter its address, key and a vision-capable model.",
     ),
     ;
 

@@ -248,6 +248,7 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
         val auth = mapOf("Authorization" to "Bearer ${ai.keyFor(provider)}")
         when (provider) {
             Provider.DEEPSEEK -> ApiBalances.parseDeepSeek(get(ApiBalances.DEEPSEEK_URL, auth, provider))
+            Provider.OPENROUTER -> ApiBalances.parseOpenRouter(get("${ai.baseUrlFor(provider)}/credits", auth, provider))
             Provider.CUSTOM -> {
                 val base = ai.baseUrlFor(provider).trimEnd('/')
                 UrlPolicy.problem(base)?.let { throw AiException(it) }
@@ -284,6 +285,12 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
             }
             ApiKind.OPENAI_COMPATIBLE -> {
                 val root = get("$baseUrl/models", mapOf("Authorization" to "Bearer $key"), provider)
+                // OpenRouter lists hundreds; only the ones that can read a photo make sense here.
+                // Its model list is public, so the key is checked on its own first.
+                if (provider == Provider.OPENROUTER) {
+                    get("$baseUrl/key", mapOf("Authorization" to "Bearer $key"), provider)
+                    return@withContext OpenRouterModels.visionModels(root)
+                }
                 val ids = root["data"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
                 // OpenAI lists embeddings, speech and image models too; keep the ones that chat.
                 (if (provider == Provider.OPENAI) ids.filter(::isOpenAiChatModel) else ids).sorted()
@@ -324,6 +331,12 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
                 aliases.filter { "haiku" in it }.maxOrNull()
                     ?: aliases.filter { "sonnet" in it }.maxOrNull()
                     ?: models.maxOrNull()
+            // A free vision model, since that's what people try OpenRouter for; then a cheap paid one.
+            Provider.OPENROUTER ->
+                models.firstOrNull { it.startsWith("google/gemma") && OpenRouterModels.isFree(it) }
+                    ?: models.firstOrNull { OpenRouterModels.isFree(it) && it != OpenRouterModels.FREE_ROUTER && "safety" !in it }
+                    ?: models.firstOrNull { it.endsWith("gpt-4o-mini") }
+                    ?: models.firstOrNull()
             // Unknown service: the user has to name the model themselves.
             Provider.CUSTOM -> null
         }

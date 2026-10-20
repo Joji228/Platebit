@@ -38,6 +38,27 @@ class ApiBalancesTest {
     }
 
     @Test
+    fun openRouterListsVisionModelsFreeFirst() {
+        val root = json(
+            """{"data":[
+              {"id":"openai/gpt-4o-mini","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+              {"id":"deepseek/deepseek-chat","architecture":{"input_modalities":["text"],"output_modalities":["text"]}},
+              {"id":"google/gemma-4-31b-it:free","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+              {"id":"google/lyria-3-pro-preview","architecture":{"input_modalities":["text","image"],"output_modalities":["audio"]}},
+              {"id":"anthropic/claude-haiku","architecture":{"input_modalities":["image","text"],"output_modalities":["text"]}},
+              {"id":"openrouter/free","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}}
+            ]}""",
+        )
+        assertEquals(
+            listOf("google/gemma-4-31b-it:free", "openrouter/free", "anthropic/claude-haiku", "openai/gpt-4o-mini"),
+            OpenRouterModels.visionModels(root),
+        )
+        assertTrue(OpenRouterModels.isFree("x/y:free"))
+        assertFalse(OpenRouterModels.isFree("openai/gpt-4o-mini"))
+        assertTrue(ApiBalances.supported(Provider.OPENROUTER, AiSettings()))
+    }
+
+    @Test
     fun balanceErrorsAreShort() {
         assertEquals(
             "DeepSeek rejected this key, so the balance can't be shown.",
