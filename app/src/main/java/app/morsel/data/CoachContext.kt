@@ -168,11 +168,11 @@ object CoachContext {
             append("None.\n")
             return
         }
-        append("date time | meal | name | kcal P C F\n")
+        append("date time | #id | meal | name | kcal P C F\n")
         val foodsFrom = today.minusDays(foodDays - 1L)
         recent.forEach { m ->
             val macros = m.macros
-            append(m.meal.date).append(' ').append(time(m.meal.timestamp, zone)).append(" | ")
+            append(m.meal.date).append(' ').append(time(m.meal.timestamp, zone)).append(" | #").append(m.meal.id).append(" | ")
             append(MealType.parse(m.meal.mealType).title.lowercase()).append(" | ").append(m.meal.name.oneLine()).append(" | ")
             append(n(macros.kcal)).append(' ').append(n(macros.protein)).append(' ').append(n(macros.carbs)).append(' ').append(n(macros.fat))
             if (foodDays > 0 && !m.date.isBefore(foodsFrom) && m.items.isNotEmpty()) {

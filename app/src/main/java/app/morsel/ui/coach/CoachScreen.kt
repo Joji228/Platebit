@@ -62,6 +62,28 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.CoachMessage
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.MonitorWeight
+import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.WaterDrop
+import app.morsel.data.ActionStatus
+import app.morsel.data.ActionType
+import app.morsel.data.CoachAction
+import app.morsel.data.CoachActions
+import java.time.LocalDate
 import app.morsel.ui.components.Pill
 import app.morsel.ui.components.RoundIconButton
 
@@ -92,6 +114,8 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
         onBack = onBack,
         typingAt = typing,
         onTyped = viewModel::typed,
+        onAccept = viewModel::accept,
+        onDecline = viewModel::decline,
     )
 }
 
@@ -109,6 +133,9 @@ fun CoachContent(
     /** The answer (by its time) to type out letter by letter; older ones show in full. */
     typingAt: Long? = null,
     onTyped: () -> Unit = {},
+    /** Accept or Decline on a proposed change: the message it belongs to (by time) and its position. */
+    onAccept: (Long, Int) -> Unit = { _, _ -> },
+    onDecline: (Long, Int) -> Unit = { _, _ -> },
 ) {
     var input by rememberSaveable { mutableStateOf("") }
     var confirmNew by remember { mutableStateOf(false) }
@@ -158,13 +185,47 @@ fun CoachContent(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(messages) { message ->
-                        if (message.fromUser) UserBubble(message.text) else CoachText(message.text, typing = message.at == typingAt, onTyped = onTyped)
+                        if (message.fromUser) {
+                            UserBubble(message.text)
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CoachText(message.text, typing = message.at == typingAt, onTyped = onTyped)
+                                message.actions.filter { it.status != ActionStatus.PENDING }.forEach { ActionOutcome(it) }
+                            }
+                        }
                     }
                     if (thinking) {
                         item { Thinking() }
                     } else if (error != null) {
                         item { ErrorRow(error, onRetry) }
                     }
+                }
+            }
+        }
+
+        // The newest answer's proposals wait above the text box until each is accepted or declined.
+        // They appear once the answer has finished typing out.
+        val last = messages.lastOrNull()?.takeIf { !it.fromUser && it.at != typingAt }
+        val pending = last?.actions?.withIndex()?.filter { it.value.status == ActionStatus.PENDING }.orEmpty()
+        AnimatedVisibility(
+            visible = pending.isNotEmpty() && !thinking,
+            enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                pending.forEach { (index, action) ->
+                    ActionCard(
+                        action,
+                        onAccept = { last?.let { onAccept(it.at, index) } },
+                        onDecline = { last?.let { onDecline(it.at, index) } },
+                    )
                 }
             }
         }
@@ -314,6 +375,64 @@ private fun ErrorRow(message: String, onRetry: () -> Unit) {
     }
 }
 
+/** A change the coach offers to make, waiting for Accept or Decline. */
+@Composable
+private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () -> Unit) {
+    val detail = remember(action) { CoachActions.detail(action, LocalDate.now()) }
+    val tint = if (action.type == ActionType.DELETE_MEAL) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .background(tint.copy(alpha = 0.16f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(action.type.icon, null, Modifier.size(18.dp), tint = tint)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(CoachActions.title(action), style = MaterialTheme.typography.titleSmall)
+                    detail?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDecline) { Text("Decline", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Spacer(Modifier.width(4.dp))
+                TextButton(onClick = onAccept) { Text("Accept", fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+/** Under the coach's message once a proposal is answered: what was done, or that it was declined. */
+@Composable
+private fun ActionOutcome(action: CoachAction) {
+    val (icon, color, text) = when (action.status) {
+        ActionStatus.ACCEPTED -> Triple(Icons.Rounded.CheckCircle, MaterialTheme.colorScheme.primary, action.result ?: CoachActions.title(action))
+        ActionStatus.FAILED -> Triple(Icons.Rounded.ErrorOutline, MaterialTheme.colorScheme.error, "Couldn't do it: ${action.result}")
+        else -> Triple(Icons.Rounded.Block, MaterialTheme.colorScheme.onSurfaceVariant, "Declined: ${CoachActions.title(action)}")
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(16.dp), tint = color)
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private val ActionType.icon
+    get() = when (this) {
+        ActionType.LOG_FOOD -> Icons.Rounded.Restaurant
+        ActionType.DELETE_MEAL -> Icons.Rounded.DeleteOutline
+        ActionType.ADD_WATER, ActionType.SET_WATER_GOAL -> Icons.Rounded.WaterDrop
+        ActionType.LOG_WEIGHT -> Icons.Rounded.MonitorWeight
+        ActionType.SET_CALORIES -> Icons.Rounded.LocalFireDepartment
+        ActionType.SET_GOAL_WEIGHT -> Icons.Rounded.Flag
+    }
+
 @Composable
 private fun InputBar(value: String, onChange: (String) -> Unit, canSend: Boolean, onSend: () -> Unit) {
     Row(
@@ -375,13 +494,34 @@ internal fun coachMarkup(raw: String, strong: Color): AnnotatedString = buildAnn
 }
 
 private fun AnnotatedString.Builder.appendBold(line: String, strong: Color) {
-    val parts = line.split("**")
-    // An odd count means every ** has a partner; otherwise show the text as it is.
+    // Models sometimes bold with __text__ instead of **text**.
+    val text = line.replace(Regex("""__(\S(?:.*?\S)?)__"""), "**$1**")
+    val parts = text.split("**")
+    // An odd count means every ** has a partner; otherwise treat the asterisks as plain text.
     if (parts.size % 2 == 0) {
-        append(line)
+        appendNumbers(text, strong)
         return
     }
     parts.forEachIndexed { i, part ->
-        if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = strong)) { append(part) } else append(part)
+        if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = strong)) { append(part) } else appendNumbers(part, strong)
     }
 }
+
+/**
+ * Numbers with a unit (121.5 kg, 1,800 kcal, 140 g, 2 L, 25 %) are bold even when the model forgot
+ * to mark them, so the key figures always stand out.
+ */
+private fun AnnotatedString.Builder.appendNumbers(text: String, strong: Color) {
+    var last = 0
+    KEY_NUMBER.findAll(text).forEach { match ->
+        append(text.substring(last, match.range.first))
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = strong)) { append(match.value) }
+        last = match.range.last + 1
+    }
+    append(text.substring(last))
+}
+
+private val KEY_NUMBER = Regex(
+    """(?<![\w.,])[-+−~]?\d+(?:[.,]\d+)*\s?(?:%|(?:kcal|cal|kg|lbs?|ml|mg|g|l)(?![\p{L}\d]))""",
+    RegexOption.IGNORE_CASE,
+)

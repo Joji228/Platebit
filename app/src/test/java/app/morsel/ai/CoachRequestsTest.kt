@@ -1,5 +1,8 @@
 package app.morsel.ai
 
+import app.morsel.data.ActionStatus
+import app.morsel.data.ActionType
+import app.morsel.data.CoachAction
 import app.morsel.data.CoachMessage
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
@@ -33,6 +36,19 @@ class CoachRequestsTest {
         assertTrue(h.size <= 20)
         // A coach message left at the front is dropped, so the user speaks first
         assertEquals(listOf("q"), CoachRequests.history(listOf(CoachMessage(false, "hi"), CoachMessage(true, "q"))).map { it.text })
+    }
+
+    @Test
+    fun proposalsAndTheirAnswersGoBackToTheModel() {
+        val withActions = listOf(
+            CoachMessage(true, "Log 500 ml of water"),
+            CoachMessage(false, "Ready, tap Accept.", actions = listOf(CoachAction(ActionType.ADD_WATER, ml = 500, status = ActionStatus.ACCEPTED))),
+            CoachMessage(true, "Thanks"),
+        )
+        val body = CoachRequests.openAiCompatible(Provider.DEEPSEEK, "m", system, withActions, null)
+        val coach = body["messages"]!!.jsonArray[2].jsonObject.str("content")
+        assertEquals("Ready, tap Accept.\n[Proposed change: Add 500 ml of water: accepted, done]", coach)
+        assertTrue(CoachPrompt.SYSTEM.contains("<actions>"))
     }
 
     @Test

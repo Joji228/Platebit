@@ -1,5 +1,6 @@
 package app.morsel.ai
 
+import app.morsel.data.CoachActions
 import app.morsel.data.CoachMessage
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
@@ -21,10 +22,26 @@ Below the rules is the user's real data from the app. Use it:
 How to answer:
 - Be as short as possible and straight to the point: usually 1-3 short sentences, never more than about 60 words unless the user asks for detail.
 - Answer the question first. No greeting, no restating the question, no disclaimers about how little data there is unless it changes the answer.
-- Put **bold** on the key numbers (weights like **121.5 kg**, calories, grams, percentages) and on the one focus phrase that matters most (like **more protein at dinner**). Bold nothing else.
+- Always wrap every number with a unit in double asterisks, exactly like **121.5 kg**, **1,850 kcal**, **140 g**, **2 L**, **31%**, and also the one focus phrase that matters most (like **more protein at dinner**). Bold nothing else.
 - At most one concrete next step, as a short sentence. Use bullets only when the user asks for a list.
 - Warm and honest, like a good coach: encourage real progress, don't sugar-coat.
 - No tables or headings.
+Making changes in the app:
+- When the user asks you to log or change something (food they ate, water, a weigh-in, their calorie or water target, their goal weight, deleting a meal), propose it. Only when they ask; never on your own initiative.
+- The user sees each proposal as a card with Accept and Decline, and nothing changes until they accept. So never say it's done: say briefly what you've prepared, like "Here's your lunch, tap Accept to log it."
+- To propose, end your reply with exactly one block, nothing after it:
+<actions>[ ...one JSON object per change... ]</actions>
+- The objects (dates are YYYY-MM-DD and default to today; never a future date):
+  {"type":"log_food","meal_name":"2-4 words","meal_type":"breakfast|lunch|dinner|snack","date":"...","items":[{"name":"food","grams":150,"kcal_per_100g":165,"protein_per_100g":31,"carbs_per_100g":0,"fat_per_100g":3.6}]}
+  {"type":"add_water","ml":500,"date":"..."}
+  {"type":"log_weight","kg":121.0,"date":"..."}
+  {"type":"set_calorie_target","kcal":2200} or {"type":"set_calorie_target","automatic":true}
+  {"type":"set_water_goal","ml":3000} or {"type":"set_water_goal","automatic":true}
+  {"type":"set_goal_weight","kg":110}
+  {"type":"delete_meal","meal_id":123} (the #number shown in the meal list)
+- For food, estimate like a careful nutritionist: one item per food, realistic portions when no amount is given, oils and sauces as their own items, and the real label values for branded products you know. Pick meal_type from the food and the time.
+- At most 5 changes per reply. If something is unclear (which meal, how much), ask one short question instead of guessing wildly.
+- Lines like [Proposed change: ...] in the conversation show what you proposed earlier and whether the user accepted it.
 - Never suggest eating under 1,200 kcal a day (women) or 1,500 (men), losing more than about 1% of body weight a week, or skipping meals as a strategy.
 - You are not a doctor. For medical conditions, medication, pregnancy, injuries or signs of disordered eating, gently suggest a professional.
 - Reply in the language the user writes in."""
@@ -40,7 +57,7 @@ How to answer:
  * unit tested; [AiService.chat] sends them.
  */
 internal object CoachRequests {
-    private const val MAX_TOKENS = 800
+    private const val MAX_TOKENS = 1500
     private const val TEMPERATURE = 0.5
 
     /**
@@ -48,7 +65,14 @@ internal object CoachRequests {
      * user to speak first, and an answer only makes sense after its question.
      */
     fun history(messages: List<CoachMessage>, limit: Int = CoachPrompt.HISTORY_MESSAGES): List<CoachMessage> =
-        messages.filter { it.text.isNotBlank() }.takeLast(limit).dropWhile { !it.fromUser }
+        messages.filter { it.text.isNotBlank() || it.actions.isNotEmpty() }.takeLast(limit).dropWhile { !it.fromUser }
+
+    /**
+     * What the model sees of a message. A coach reply also lists the changes it proposed and how
+     * the user answered, so in the next turn it knows what was logged and what was turned down.
+     */
+    fun CoachMessage.content(): String =
+        if (actions.isEmpty()) text else text + actions.joinToString("") { "\n[Proposed change: ${CoachActions.summary(it)}]" }
 
     /** Claude: the data is marked for prompt caching, so follow-up questions reuse it cheaply. */
     fun anthropic(model: String, system: String, history: List<CoachMessage>): JsonObject = buildJsonObject {
@@ -66,7 +90,7 @@ internal object CoachRequests {
             history.forEach { m ->
                 addJsonObject {
                     put("role", if (m.fromUser) "user" else "assistant")
-                    put("content", m.text)
+                    put("content", m.content())
                 }
             }
         }
@@ -80,7 +104,7 @@ internal object CoachRequests {
             history.forEach { m ->
                 addJsonObject {
                     put("role", if (m.fromUser) "user" else "model")
-                    putJsonArray("parts") { addJsonObject { put("text", m.text) } }
+                    putJsonArray("parts") { addJsonObject { put("text", m.content()) } }
                 }
             }
         }
@@ -115,7 +139,7 @@ internal object CoachRequests {
             history.forEach { m ->
                 addJsonObject {
                     put("role", if (m.fromUser) "user" else "assistant")
-                    put("content", m.text)
+                    put("content", m.content())
                 }
             }
         }

@@ -7,9 +7,17 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.io.File
 
-/** One message in the coach chat. [fromUser] false means the coach wrote it. */
+/**
+ * One message in the coach chat. [fromUser] false means the coach wrote it; a coach message can
+ * carry [actions], changes it offers to make that the user accepts or declines.
+ */
 @Serializable
-data class CoachMessage(val fromUser: Boolean, val text: String, val at: Long = System.currentTimeMillis())
+data class CoachMessage(
+    val fromUser: Boolean,
+    val text: String,
+    val at: Long = System.currentTimeMillis(),
+    val actions: List<CoachAction> = emptyList(),
+)
 
 /**
  * The current coach conversation, kept in one small file in the app's private storage. It is

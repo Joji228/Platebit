@@ -107,6 +107,15 @@ class MorselRepository(
         WeightEntity(date = LocalDate.now().toString(), timestamp = System.currentTimeMillis(), kg = kg),
     )
 
+    /** A weigh-in for another day (from the coach), timed in its morning so the trend stays in order. */
+    suspend fun logWeight(kg: Double, date: LocalDate, timestamp: Long) = db.weights().insert(
+        WeightEntity(date = date.toString(), timestamp = timestamp, kg = kg),
+    )
+
+    /** Water for any day, stamped with the given time (the coach can log a past day's water). */
+    suspend fun addWater(date: LocalDate, ml: Int, timestamp: Long) =
+        db.water().insert(WaterEntity(date = date.toString(), timestamp = timestamp, ml = ml))
+
     /**
      * A weigh-in from the smart scale; [composition] is null when it was weighed without impedance.
      * Returns the new entry's id, so an automatic save can be undone.

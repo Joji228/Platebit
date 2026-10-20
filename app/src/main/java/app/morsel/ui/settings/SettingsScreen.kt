@@ -517,7 +517,8 @@ fun SettingsScreen(
             title = { Text("Turn on the AI coach?") },
             text = {
                 Text(
-                    "The coach is a chat that answers questions about your progress from your own data.\n\n" +
+                    "The coach is a chat that answers questions about your progress from your own data. Ask it to log food, " +
+                        "water or a weigh-in, or to change a target, and it prepares the change for you to accept or decline.\n\n" +
                         "Each question sends a summary of your data to your AI engine (${state.ai.primary.title}): your profile " +
                         "(sex, age, height and goals), daily totals, recent meals, water, weigh-ins and body composition. " +
                         "Photos and API keys are never sent.\n\n" +

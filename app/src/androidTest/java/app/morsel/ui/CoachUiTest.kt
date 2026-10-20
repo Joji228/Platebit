@@ -12,6 +12,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.morsel.data.ActionStatus
+import app.morsel.data.ActionType
+import app.morsel.data.CoachAction
 import app.morsel.data.CoachMessage
 import app.morsel.ui.coach.CoachContent
 import app.morsel.ui.coach.CoachSuggestions
@@ -75,11 +78,44 @@ class CoachUiTest {
     }
 
     @Test
+    fun proposedChangesWaitForAcceptOrDecline() {
+        val water = CoachAction(ActionType.ADD_WATER, date = java.time.LocalDate.now().toString(), ml = 500)
+        val weight = CoachAction(ActionType.LOG_WEIGHT, date = java.time.LocalDate.now().toString(), kg = 121.0, status = ActionStatus.ACCEPTED, result = "Logged 121.0 kg")
+        val chat = listOf(
+            CoachMessage(true, "Log my weight and a bottle of water", at = 1L),
+            CoachMessage(false, "Ready, tap Accept.", at = 2L, actions = listOf(weight, water)),
+        )
+        val accepted = mutableListOf<Pair<Long, Int>>()
+        val declined = mutableListOf<Pair<Long, Int>>()
+        rule.setContent {
+            MorselTheme(dark = true) {
+                CoachContent(
+                    chat, thinking = false, error = null, loaded = true, onSend = {}, onRetry = {}, onNewChat = {}, onBack = {},
+                    onAccept = { at, i -> accepted += at to i }, onDecline = { at, i -> declined += at to i },
+                )
+            }
+        }
+        // The answered one shows as a line in the chat; the open one as a card with both buttons.
+        rule.onNodeWithText("Logged 121.0 kg").assertIsDisplayed()
+        rule.onNodeWithText("Add 500 ml of water").assertIsDisplayed()
+        rule.onNodeWithText("Accept").performClick()
+        rule.onNodeWithText("Decline").performClick()
+        rule.runOnIdle {
+            assertEquals(listOf(2L to 1), accepted)
+            assertEquals(listOf(2L to 1), declined)
+        }
+    }
+
+    @Test
     fun markupMakesBoldAndBullets() {
         val text = coachMarkup("## Summary\nYou're **on track**.\n- Protein: 120 g\n* Water: 2 L", Color.White)
         assertEquals("Summary\nYou're on track.\n•  Protein: 120 g\n•  Water: 2 L", text.text)
-        assertEquals(2, text.spanStyles.size) // the heading and "on track"
-        assertEquals("on track", text.text.substring(text.spanStyles.last().start, text.spanStyles.last().end))
+        // The heading, "on track", and the numbers with units, which are bold even unmarked
+        val bold = text.spanStyles.map { text.text.substring(it.start, it.end) }
+        assertEquals(listOf("Summary", "on track", "120 g", "2 L"), bold)
+        // __text__ counts as bold too, and plain numbers without a unit stay plain
+        val other = coachMarkup("Eat __more protein__ on 3 days, about 1,850 kcal or 31%", Color.White)
+        assertEquals(listOf("more protein", "1,850 kcal", "31%"), other.spanStyles.map { other.text.substring(it.start, it.end) })
         // An unpaired ** is left alone
         assertEquals("5 ** 2", coachMarkup("5 ** 2", Color.White).text)
     }

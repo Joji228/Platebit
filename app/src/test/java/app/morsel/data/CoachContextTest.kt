@@ -52,7 +52,7 @@ class CoachContextTest {
         // 150 g chicken (248 kcal) + 200 g rice (260 kcal) = 508 kcal, water 1000 ml, one meal
         assertTrue(text, text.contains("$today,508,"))
         assertTrue(text, text.lines().any { it.startsWith("$today,508,") && it.endsWith(",1000,1") })
-        assertTrue(text.contains("$today 12:00 | lunch | Chicken rice | 508"))
+        assertTrue(text.contains("$today 12:00 | #1 | lunch | Chicken rice | 508"))
         assertTrue(text.contains("Chicken 150 g, Rice 200 g"))
         // Oldest first
         assertTrue(text.indexOf("${today.minusDays(1)},") < text.indexOf("$today,"))
