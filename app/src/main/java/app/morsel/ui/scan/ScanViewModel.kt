@@ -58,6 +58,8 @@ class ScanViewModel(private val app: AppContainer) : ViewModel() {
 
     fun analyze(onReady: () -> Unit) {
         if (!canAnalyze || analyzing) return
+        // The photos are taken; no reason to keep the flash burning while the meal is analyzed.
+        torch = false
         job = viewModelScope.launch {
             analyzing = true
             error = null
