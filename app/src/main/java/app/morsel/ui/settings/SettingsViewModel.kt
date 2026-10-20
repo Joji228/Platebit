@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.morsel.AppContainer
+import app.morsel.ai.ApiBalance
+import app.morsel.ai.ApiBalances
 import app.morsel.data.AiSettings
 import app.morsel.data.Backup
 import app.morsel.data.Provider
@@ -37,6 +39,23 @@ data class SettingsState(
     val accent: AccentColor = AccentColor.Default,
     val scaleEnabled: Boolean = false,
 )
+
+/** The credit-left card at the top of the AI engine screen. */
+sealed interface BalanceState {
+    /** The engine used for scans can't report its balance (or has no key yet). */
+    data object Unavailable : BalanceState
+    data object Loading : BalanceState
+    data class Ok(val balance: ApiBalance, val at: Long) : BalanceState
+    data class Failed(val message: String) : BalanceState
+}
+
+/** A short reason for the balance card; the full API error belongs in the key check, not here. */
+internal fun balanceProblem(service: String, message: String?): String = when {
+    message == null -> "Couldn't reach $service. Tap refresh to try again."
+    "401" in message || "403" in message -> "$service rejected this key, so the balance can't be shown."
+    "402" in message -> "$service says the account has no credit left."
+    else -> message.substringBefore(" (request_id").take(140)
+}
 
 sealed interface KeyCheck {
     data object Idle : KeyCheck
@@ -86,6 +105,26 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
             app.repository.deleteAllPhotos(app.photos.mealPhotos())
             refreshStorage()
             message.value = "Meal photos deleted. Your meals are still logged."
+        }
+    }
+
+    val balance = MutableStateFlow<BalanceState>(BalanceState.Unavailable)
+
+    /** Asks the engine used for scans how much credit is left (DeepSeek and OpenRouter can say). */
+    fun refreshBalance() = viewModelScope.launch {
+        val ai = app.settings.ai.first()
+        val provider = ai.primary
+        if (!ApiBalances.supported(provider, ai) || !ai.isReady(provider)) {
+            balance.value = BalanceState.Unavailable
+            return@launch
+        }
+        balance.value = BalanceState.Loading
+        balance.value = try {
+            app.ai.balance(provider)?.let { BalanceState.Ok(it, System.currentTimeMillis()) } ?: BalanceState.Unavailable
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            BalanceState.Failed(balanceProblem(provider.title, e.message))
         }
     }
 

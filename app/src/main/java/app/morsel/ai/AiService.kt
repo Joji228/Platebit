@@ -238,6 +238,25 @@ class AiService(private val settings: SettingsRepository, client: OkHttpClient) 
     }
 
     /** Lists models the key can use. Doubles as a key check. */
+    /**
+     * How much credit is left on this engine's account, or null when the service can't say
+     * (see [ApiBalances.supported]). Throws with a readable message when the check fails.
+     */
+    suspend fun balance(provider: Provider): ApiBalance? = withContext(Dispatchers.IO) {
+        val ai = settings.ai.first()
+        if (!ApiBalances.supported(provider, ai) || !ai.isReady(provider)) return@withContext null
+        val auth = mapOf("Authorization" to "Bearer ${ai.keyFor(provider)}")
+        when (provider) {
+            Provider.DEEPSEEK -> ApiBalances.parseDeepSeek(get(ApiBalances.DEEPSEEK_URL, auth, provider))
+            Provider.CUSTOM -> {
+                val base = ai.baseUrlFor(provider).trimEnd('/')
+                UrlPolicy.problem(base)?.let { throw AiException(it) }
+                ApiBalances.parseOpenRouter(get("$base/credits", auth, provider))
+            }
+            else -> null
+        } ?: throw AiException("${provider.title} didn't say how much credit is left")
+    }
+
     suspend fun listModels(provider: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
         if (provider.needsBaseUrl) UrlPolicy.problem(baseUrl)?.let { throw AiException(it) }
         when (provider.kind) {

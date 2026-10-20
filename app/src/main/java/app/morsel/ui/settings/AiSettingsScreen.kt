@@ -1,8 +1,22 @@
 package app.morsel.ui.settings
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,7 +25,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -19,70 +35,93 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.Wallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.morsel.ai.ApiBalances
 import app.morsel.data.AiSettings
 import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
-import androidx.compose.material.icons.rounded.Psychology
-import app.morsel.ui.components.GroupedList
-import app.morsel.ui.components.ListRow
+import app.morsel.ui.components.Pill
 import app.morsel.ui.components.RoundIconButton
-import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.draw.clip
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import app.morsel.ui.components.SecondaryButton
+import app.morsel.ui.theme.Numeric
+import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Where the user picks which AI reads their meal photos and enters their own API key for it.
- * Several services can be set up side by side; one is used for scans, and a second can be
- * allowed as a backup (off by default).
+ * The credit left on the scan engine's account sits on top (for services that report it);
+ * below, one card per engine. Every choice opens a sheet that slides up from the bottom.
  */
 @Composable
 fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val balance by viewModel.balance.collectAsStateWithLifecycle()
     val ai = state.ai
 
-    var keyDialog by remember { mutableStateOf<Provider?>(null) }
-    var modelDialog by remember { mutableStateOf<Provider?>(null) }
-    var backupPicker by remember { mutableStateOf(false) }
+    var serviceSheet by remember { mutableStateOf<Provider?>(null) }
+    var keySheet by remember { mutableStateOf<Provider?>(null) }
+    var modelSheet by remember { mutableStateOf<Provider?>(null) }
+    var thinkingSheet by remember { mutableStateOf(false) }
+    var backupSheet by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<Provider?>(null) }
-    var thinkingDialog by remember { mutableStateOf(false) }
+
+    // A new scan engine, key or address: check its balance again.
+    LaunchedEffect(ai.primary, ai.keyFor(ai.primary), ai.customBaseUrl) { viewModel.refreshBalance() }
 
     Column(
         Modifier
@@ -102,185 +141,136 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
 
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
         ) {
+            item { BalanceCard(ai.primary, ai, balance, onRefresh = viewModel::refreshBalance) }
+
             item {
                 Text(
-                    "Your photos go only to the engine you pick, using your own API key. " +
-                        "Keys are stored encrypted on this phone.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "Your photos go only to the engine you pick, using your own API key. Keys are stored encrypted on this phone.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp),
                 )
             }
 
             item { GroupLabel("Your engines") }
-            item {
-                Text(
-                    "Pick a service in each engine's menu. The ticked engine reads your photos.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-            }
             items(ai.activeEngines, key = { it.name }) { provider ->
-                GroupedList(
-                    rows = buildList<@Composable () -> Unit> {
-                        add {
-                            EngineHeader(
-                                provider = provider,
-                                ai = ai,
-                                onUse = { viewModel.setPrimary(provider) },
-                                onChange = { viewModel.changeEngine(provider, it) },
-                                onRemove = if (ai.activeEngines.size > 1) ({ removing = provider }) else null,
-                            )
-                        }
-                        add { KeyRow(provider, ai, onClick = { keyDialog = provider }) }
-                        add { ModelRow(provider, ai, onClick = { modelDialog = provider }) }
-                        if (provider == Provider.DEEPSEEK) {
-                            add {
-                                ListRow(
-                                    "Thinking",
-                                    subtitle = "${ai.deepseekThinking.title} · ${ai.deepseekThinking.about}",
-                                    icon = Icons.Rounded.Psychology,
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    onClick = { thinkingDialog = true },
-                                )
-                            }
-                        }
-                    },
+                EngineCard(
+                    provider = provider,
+                    ai = ai,
+                    onUse = { viewModel.setPrimary(provider) },
+                    onService = { serviceSheet = provider },
+                    onKey = { keySheet = provider },
+                    onModel = { modelSheet = provider },
+                    onThinking = { thinkingSheet = true },
+                    onRemove = if (ai.activeEngines.size > 1) ({ removing = provider }) else null,
                 )
-            }
-            if (!ai.isReady(ai.primary)) {
-                item {
-                    Text(
-                        "${ai.primary.title} has no API key yet. Add one to start scanning.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                }
             }
             item {
                 if (ai.addableEngines.isNotEmpty()) {
-                    SecondaryButton(
-                        "Add engine",
-                        viewModel::addEngine,
-                        Modifier.fillMaxWidth(),
-                        icon = Icons.Rounded.Add,
-                        accent = true,
-                    )
+                    Surface(
+                        onClick = viewModel::addEngine,
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Add, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add engine", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                 } else {
                     Text(
                         "You can set up to ${AiSettings.MAX_ENGINES} engines.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp),
                     )
                 }
             }
+
             item { GroupLabel("Backup engine") }
             item {
-                GroupedList(
-                    rows = buildList {
-                        add {
-                            SwitchRow(
-                                title = "Use a backup",
-                                subtitle = when {
-                                    !ai.fallback -> "Off. Only ${ai.primary.title} is used. If it fails, you'll see why."
-                                    ai.fallbackTarget == null -> "On, but no other engine has a key yet"
-                                    else -> "If ${ai.primary.title} fails, ${ai.fallbackTarget!!.title} tries the same photo"
-                                },
-                                checked = ai.fallback,
-                                onChange = viewModel::setFallback,
+                Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Column {
+                        SwitchRow(
+                            title = "Use a backup",
+                            subtitle = when {
+                                !ai.fallback -> "Off. Only ${ai.primary.title} is used. If it fails, you'll see why."
+                                ai.fallbackTarget == null -> "On, but no other engine has a key yet"
+                                else -> "If ${ai.primary.title} fails, ${ai.fallbackTarget!!.title} tries the same photo"
+                            },
+                            checked = ai.fallback,
+                            onChange = viewModel::setFallback,
+                        )
+                        if (ai.fallback) {
+                            SettingRow(
+                                icon = Icons.Rounded.AutoAwesome,
+                                title = "Backup engine",
+                                value = ai.fallbackTarget?.title ?: "None",
+                                onClick = { backupSheet = true },
                             )
                         }
-                        if (ai.fallback) {
-                            add {
-                                ListRow(
-                                    "Backup engine",
-                                    value = ai.fallbackTarget?.title ?: "None",
-                                    onClick = { backupPicker = true },
-                                )
-                            }
-                        }
-                    },
-                )
+                    }
+                }
             }
-
         }
     }
 
-    keyDialog?.let { provider ->
-        KeyDialog(
+    serviceSheet?.let { provider ->
+        ServiceSheet(provider, ai, onPick = { viewModel.changeEngine(provider, it) }, onDismiss = { serviceSheet = null })
+    }
+    keySheet?.let { provider ->
+        KeySheet(
             provider = provider,
             initialKey = ai.keyFor(provider),
             initialUrl = ai.customBaseUrl,
             viewModel = viewModel,
             onDismiss = {
-                keyDialog = null
+                keySheet = null
                 viewModel.resetKeyCheck()
             },
         )
     }
-    modelDialog?.let { provider ->
-        ModelDialog(
+    modelSheet?.let { provider ->
+        ModelSheet(
             provider = provider,
             selected = ai.modelFor(provider),
             viewModel = viewModel,
             onDismiss = {
-                modelDialog = null
+                modelSheet = null
                 viewModel.resetKeyCheck()
             },
         )
     }
-    if (backupPicker) {
-        BackupPicker(
-            ai = ai,
-            onPick = {
-                viewModel.setFallbackProvider(it)
-                backupPicker = false
-            },
-            onDismiss = { backupPicker = false },
-        )
-    }
-    if (thinkingDialog) {
-        AlertDialog(
-            onDismissRequest = { thinkingDialog = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            title = { Text("DeepSeek thinking") },
-            text = {
-                Column {
-                    Text(
-                        "How long DeepSeek reasons before answering. Off or Low is usually plenty for reading a meal and makes scans faster.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    ThinkingLevel.entries.forEach { level ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.setDeepseekThinking(level)
-                                    thinkingDialog = false
-                                }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = level == ai.deepseekThinking, onClick = null)
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(level.title, style = MaterialTheme.typography.bodyLarge)
-                                Text(level.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+    if (thinkingSheet) {
+        Sheet(
+            title = "DeepSeek thinking",
+            subtitle = "How long DeepSeek reasons before answering. Off or Low is usually plenty for reading a meal and makes scans faster.",
+            onDismiss = { thinkingSheet = false },
+        ) { close ->
+            ThinkingLevel.entries.forEach { level ->
+                Option(level.title, level.about, selected = level == ai.deepseekThinking) {
+                    viewModel.setDeepseekThinking(level)
+                    close()
                 }
-            },
-            confirmButton = { TextButton(onClick = { thinkingDialog = false }) { Text("Close") } },
-        )
+            }
+        }
+    }
+    if (backupSheet) {
+        Sheet(title = "Backup engine", subtitle = "Tries the same photo if your scan engine fails.", onDismiss = { backupSheet = false }) { close ->
+            ai.activeEngines.filter { it != ai.primary }.forEach { provider ->
+                val ready = ai.isReady(provider)
+                Option(provider.title, if (ready) provider.byline else "Add a key first", selected = provider == ai.fallbackTarget, enabled = ready) {
+                    viewModel.setFallbackProvider(provider)
+                    close()
+                }
+            }
+        }
     }
     removing?.let { provider ->
         AlertDialog(
@@ -304,163 +294,366 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     }
 }
 
-/** Top row of an engine card: tick to use it for scans, its service menu, and Remove. */
+/**
+ * Credit left on the scan engine's account, with a refresh button. DeepSeek and OpenRouter report
+ * it; for others the card just says the service doesn't share it.
+ */
 @Composable
-private fun EngineHeader(
-    provider: Provider,
-    ai: AiSettings,
-    onUse: () -> Unit,
-    onChange: (Provider) -> Unit,
-    onRemove: (() -> Unit)?,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun BalanceCard(provider: Provider, ai: AiSettings, state: BalanceState, onRefresh: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    val canCheck = ApiBalances.supported(provider, ai)
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, primary.copy(alpha = if (canCheck) 0.3f else 0.12f)),
     ) {
-        RadioButton(selected = provider == ai.primary, onClick = onUse)
-        Box(Modifier.weight(1f)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { menuOpen = true }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(provider.title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (provider == ai.primary) "Used for scans" else (provider.byline ?: "Tap the circle to use for scans"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (provider == ai.primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(primary.copy(alpha = if (canCheck) 0.12f else 0.04f), Color.Transparent)))
+                .padding(18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .background(primary.copy(alpha = 0.16f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Wallet, null, Modifier.size(20.dp), tint = primary)
                 }
-                Icon(Icons.Rounded.ExpandMore, "Choose service", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "CREDIT LEFT",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold),
+                        color = primary,
+                    )
+                    Text("${provider.title} account", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (canCheck && ai.isReady(provider)) RefreshButton(spinning = state is BalanceState.Loading, onClick = onRefresh)
             }
-            DropdownMenu(
-                expanded = menuOpen,
-                onDismissRequest = { menuOpen = false },
-                shape = RoundedCornerShape(16.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Provider.entries.forEach { option ->
-                    val taken = option != provider && option in ai.activeEngines
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(option.title, style = MaterialTheme.typography.bodyLarge)
-                                (if (taken) "Already added" else option.byline)?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(12.dp))
+            AnimatedContent(targetState = state, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) }, label = "balance") { s ->
+                Column {
+                    when {
+                        !canCheck -> Text(
+                            "${provider.title} doesn't share your balance with apps. Check it on its website. DeepSeek and OpenRouter keys show it here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        !ai.isReady(provider) -> Text(
+                            "Add your ${provider.title} key below to see what's left.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        s is BalanceState.Ok -> {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(s.balance.amounts.first().text, style = MaterialTheme.typography.displaySmall.merge(Numeric))
+                                s.balance.amounts.drop(1).forEach {
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(it.text, style = MaterialTheme.typography.titleMedium.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                        },
-                        trailingIcon = if (option == provider) ({ Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
-                        enabled = !taken,
-                        onClick = {
-                            menuOpen = false
-                            onChange(option)
-                        },
-                    )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                listOfNotNull(s.balance.detail, "updated ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(s.at))}").joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        s is BalanceState.Failed -> Text(s.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        else -> Text("Checking…", style = MaterialTheme.typography.displaySmall.merge(Numeric), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            }
-        }
-        if (onRemove != null) {
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Rounded.DeleteOutline, "Remove ${provider.title}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun KeyRow(provider: Provider, ai: AiSettings, onClick: () -> Unit) {
-    val key = ai.keyFor(provider)
-    val missingUrl = provider.needsBaseUrl && ai.customBaseUrl.isBlank()
-    ListRow(
-        "API key",
-        subtitle = when {
-            key.isBlank() -> "Not set"
-            missingUrl -> "Saved · ••••${key.takeLast(4)} · address missing"
-            provider.needsBaseUrl -> "Saved · ••••${key.takeLast(4)} · ${ai.customBaseUrl}"
-            else -> "Saved · ••••${key.takeLast(4)}"
-        },
-        icon = if (provider.needsBaseUrl) Icons.Rounded.Link else Icons.Rounded.Key,
-        iconTint = if (key.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-        onClick = onClick,
-    )
+private fun RefreshButton(spinning: Boolean, onClick: () -> Unit) {
+    val turn = rememberInfiniteTransition(label = "refresh")
+    val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "angle")
+    Surface(
+        onClick = { if (!spinning) onClick() },
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.size(40.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Rounded.Refresh,
+                "Refresh balance",
+                Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = if (spinning) angle else 0f },
+            )
+        }
+    }
 }
 
+/** One engine: its service (tap to change), whether it's the one used for scans, key, model. */
 @Composable
-private fun ModelRow(provider: Provider, ai: AiSettings, onClick: () -> Unit) {
-    ListRow(
-        "Model",
-        subtitle = ai.modelFor(provider).ifBlank { if (provider == Provider.CUSTOM) "Not chosen" else "Automatic" },
-        icon = if (provider == Provider.DEEPSEEK) Icons.Rounded.Memory else Icons.Rounded.AutoAwesome,
-        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-        onClick = onClick,
-    )
-}
-
-@Composable
-private fun KeyDialog(
+private fun EngineCard(
     provider: Provider,
-    initialKey: String,
-    initialUrl: String,
-    viewModel: SettingsViewModel,
-    onDismiss: () -> Unit,
+    ai: AiSettings,
+    onUse: () -> Unit,
+    onService: () -> Unit,
+    onKey: () -> Unit,
+    onModel: () -> Unit,
+    onThinking: () -> Unit,
+    onRemove: (() -> Unit)?,
 ) {
+    val used = provider == ai.primary
+    val primary = MaterialTheme.colorScheme.primary
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = if (used) BorderStroke(1.dp, primary.copy(alpha = 0.45f)) else null,
+    ) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onService)
+                    .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // A letter badge for the service, accent-coloured when it reads the photos.
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .background(if (used) primary else MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        provider.title.take(1),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (used) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(provider.title, style = MaterialTheme.typography.titleMedium)
+                        Icon(Icons.Rounded.ExpandMore, "Choose service", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    provider.byline?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (used) {
+                    Pill("Used for scans", primary)
+                } else {
+                    TextButton(onClick = onUse) { Text("Use for scans") }
+                }
+                if (onRemove != null) {
+                    IconButton(onClick = onRemove) {
+                        Icon(Icons.Rounded.DeleteOutline, "Remove ${provider.title}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            val key = ai.keyFor(provider)
+            val missingUrl = provider.needsBaseUrl && ai.customBaseUrl.isBlank()
+            SettingRow(
+                icon = if (provider.needsBaseUrl) Icons.Rounded.Link else Icons.Rounded.Key,
+                title = "API key",
+                value = when {
+                    key.isBlank() -> null
+                    provider.needsBaseUrl && !missingUrl -> "••••${key.takeLast(4)} · ${ai.customBaseUrl.removePrefix("https://").removePrefix("http://")}"
+                    else -> "••••${key.takeLast(4)}"
+                },
+                status = when {
+                    key.isBlank() -> Status("Not set", MaterialTheme.colorScheme.error)
+                    missingUrl -> Status("Address missing", MaterialTheme.colorScheme.error)
+                    else -> Status("Saved", primary)
+                },
+                onClick = onKey,
+            )
+            SettingRow(
+                icon = if (provider == Provider.DEEPSEEK) Icons.Rounded.Memory else Icons.Rounded.AutoAwesome,
+                title = "Model",
+                value = ai.modelFor(provider).ifBlank { if (provider == Provider.CUSTOM) "Not chosen" else "Automatic" },
+                onClick = onModel,
+            )
+            if (provider == Provider.DEEPSEEK) {
+                SettingRow(icon = Icons.Rounded.Psychology, title = "Thinking", value = ai.deepseekThinking.title, onClick = onThinking)
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+private data class Status(val text: String, val color: Color)
+
+/** A row in an engine card: icon, name, its current value and a chevron. */
+@Composable
+private fun SettingRow(icon: ImageVector, title: String, value: String?, onClick: () -> Unit, status: Status? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            value?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        status?.let {
+            Spacer(Modifier.width(8.dp))
+            Pill(it.text, it.color)
+        }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * A sheet that slides up from the bottom with a drag handle, a title and a short explanation.
+ * Choosing something closes it with the same slide; [content] gets a `close` to call.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Sheet(
+    title: String,
+    subtitle: String? = null,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.(close: () -> Unit) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val close: () -> Unit = { scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() } }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            subtitle?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(16.dp))
+            content(close)
+        }
+    }
+}
+
+/** A choice in a sheet: rounded, the picked one tinted with the accent colour and ticked. */
+@Composable
+private fun Option(title: String, subtitle: String? = null, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) primary.copy(alpha = 0.14f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = primary)
+        }
+    }
+}
+
+@Composable
+private fun ServiceSheet(provider: Provider, ai: AiSettings, onPick: (Provider) -> Unit, onDismiss: () -> Unit) {
+    Sheet(title = "Choose a service", subtitle = "Each service needs its own API key. Keys you saved before stay on this phone.", onDismiss = onDismiss) { close ->
+        Provider.entries.forEach { option ->
+            val taken = option != provider && option in ai.activeEngines
+            Option(option.title, if (taken) "Already added" else option.byline, selected = option == provider, enabled = !taken) {
+                if (option != provider) onPick(option)
+                close()
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeySheet(provider: Provider, initialKey: String, initialUrl: String, viewModel: SettingsViewModel, onDismiss: () -> Unit) {
     var key by remember { mutableStateOf(initialKey) }
     var url by remember { mutableStateOf(initialUrl) }
     var visible by remember { mutableStateOf(false) }
     val check by viewModel.keyCheck.collectAsStateWithLifecycle()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = { Text("${provider.title} API key") },
-        text = {
-            Column {
-                Text(provider.keyHelp, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(12.dp))
-                if (provider.needsBaseUrl) {
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = { url = it },
-                        singleLine = true,
-                        label = { Text("Service address") },
-                        placeholder = { Text("https://openrouter.ai/api/v1") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
+    Sheet(title = "${provider.title} API key", subtitle = provider.keyHelp, onDismiss = onDismiss) { close ->
+        if (provider.needsBaseUrl) {
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                singleLine = true,
+                label = { Text("Service address") },
+                placeholder = { Text("https://openrouter.ai/api/v1") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+        OutlinedTextField(
+            value = key,
+            onValueChange = { key = it },
+            singleLine = true,
+            placeholder = { Text("Paste your key") },
+            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (visible) "Hide key" else "Show key")
                 }
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it },
-                    singleLine = true,
-                    placeholder = { Text("Paste your key") },
-                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        IconButton(onClick = { visible = !visible }) {
-                            Icon(if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (visible) "Hide key" else "Show key")
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                CheckStatus(check)
+            },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        CheckStatus(check)
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetButton("Done", filled = false, modifier = Modifier.weight(1f), onClick = close)
+            SheetButton(if (key.isBlank()) "Remove key" else "Save and test", filled = true, modifier = Modifier.weight(1f)) {
+                viewModel.saveKey(provider, key, url)
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { viewModel.saveKey(provider, key, url) }) { Text(if (key.isBlank()) "Remove" else "Save and test") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
+        }
+    }
+}
+
+@Composable
+private fun SheetButton(label: String, filled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.height(50.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
+        }
+    }
 }
 
 @Composable
@@ -472,135 +665,65 @@ private fun CheckStatus(check: KeyCheck) {
             Spacer(Modifier.width(8.dp))
             Text("Checking…", style = MaterialTheme.typography.bodyMedium)
         }
-        is KeyCheck.Ok -> Text(
-            "Key works · ${check.models.size} models available",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        is KeyCheck.Ok -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text("Key works · ${check.models.size} models available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        }
         is KeyCheck.Failed -> Text(check.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
     }
 }
 
 @Composable
-private fun ModelDialog(provider: Provider, selected: String, viewModel: SettingsViewModel, onDismiss: () -> Unit) {
+private fun ModelSheet(provider: Provider, selected: String, viewModel: SettingsViewModel, onDismiss: () -> Unit) {
     val check by viewModel.keyCheck.collectAsStateWithLifecycle()
     var typed by remember { mutableStateOf(selected) }
     LaunchedEffect(provider) { viewModel.loadModels(provider) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = { Text("${provider.title} model") },
-        text = {
-            Column {
-                Text(
-                    when (provider) {
-                        Provider.DEEPSEEK -> "Pick a model that accepts images. Automatic prefers deepseek-flash (V4.1 Flash)."
-                        Provider.GEMINI -> "Flash models are fast and on the free tier."
-                        Provider.OPENAI -> "Automatic picks a recent mini model: fast, cheap and able to read photos."
-                        Provider.ANTHROPIC -> "Automatic picks a Haiku model: fast, cheap and able to read photos."
-                        Provider.CUSTOM -> "Name a model that can read images, exactly as the service spells it."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                val ok = check as? KeyCheck.Ok
-                val models = ok?.models.orEmpty()
-                LazyColumn(Modifier.heightIn(max = 260.dp)) {
-                    if (provider != Provider.CUSTOM) {
-                        item {
-                            val auto = ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic"
-                            ModelOption(auto, selected.isBlank()) {
-                                viewModel.setModel(provider, "")
-                                onDismiss()
-                            }
-                        }
-                    }
-                    items(models) { model ->
-                        ModelOption(model, model == selected) {
-                            viewModel.setModel(provider, model)
-                            onDismiss()
-                        }
-                    }
-                    if (check !is KeyCheck.Ok) {
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            CheckStatus(check)
-                        }
-                    }
+    Sheet(
+        title = "${provider.title} model",
+        subtitle = when (provider) {
+            Provider.DEEPSEEK -> "Pick a model that accepts images. Automatic prefers deepseek-flash (V4.1 Flash)."
+            Provider.GEMINI -> "Flash models are fast and on the free tier."
+            Provider.OPENAI -> "Automatic picks a recent mini model: fast, cheap and able to read photos."
+            Provider.ANTHROPIC -> "Automatic picks a Haiku model: fast, cheap and able to read photos."
+            Provider.CUSTOM -> "Name a model that can read images, exactly as the service spells it."
+        },
+        onDismiss = onDismiss,
+    ) { close ->
+        val ok = check as? KeyCheck.Ok
+        Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+            if (provider != Provider.CUSTOM) {
+                Option(ok?.automatic?.let { "Automatic ($it)" } ?: "Automatic", "Picks a good model for you", selected = selected.isBlank()) {
+                    viewModel.setModel(provider, "")
+                    close()
                 }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = typed,
-                    onValueChange = { typed = it },
-                    singleLine = true,
-                    label = { Text("Or type a model name") },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    viewModel.setModel(provider, typed)
-                    onDismiss()
-                },
-                enabled = typed.isNotBlank() && typed != selected,
-            ) { Text("Use this name") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
-
-@Composable
-private fun ModelOption(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+            ok?.models.orEmpty().forEach { model ->
+                Option(model, selected = model == selected) {
+                    viewModel.setModel(provider, model)
+                    close()
+                }
+            }
+        }
+        if (check !is KeyCheck.Ok) {
+            Spacer(Modifier.height(8.dp))
+            CheckStatus(check)
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { typed = it },
+            singleLine = true,
+            label = { Text("Or type a model name") },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (typed.isNotBlank() && typed != selected) {
+            Spacer(Modifier.height(12.dp))
+            SheetButton("Use this name", filled = true, modifier = Modifier.fillMaxWidth()) {
+                viewModel.setModel(provider, typed)
+                close()
+            }
+        }
     }
-}
-
-/** Lists the other added engines; ones without a key can't be chosen yet. */
-@Composable
-private fun BackupPicker(ai: AiSettings, onPick: (Provider) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = { Text("Backup engine") },
-        text = {
-            Column {
-                ai.activeEngines.filter { it != ai.primary }.forEach { provider ->
-                    val ready = ai.isReady(provider)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = ready) { onPick(provider) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = provider == ai.fallbackTarget, onClick = null, enabled = ready)
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                provider.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (ready) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (!ready) {
-                                Text("Add a key first", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
 }
