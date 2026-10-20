@@ -91,6 +91,22 @@ class CoachActionsTest {
     }
 
     @Test
+    fun readsPortionChoices() {
+        val raw = """<actions>[{"type":"log_food","meal_name":"Banana","items":[
+          {"name":"Banana","grams":120,"kcal_per_100g":89,"portions":[
+            {"label":"1 small","grams":100},{"label":"1 medium","grams":120},{"label":"1 large","grams":150},
+            {"label":"duplicate","grams":120},{"label":"","grams":200},{"label":"far too many","grams":250},{"grams":-5}]},
+          {"name":"Coffee","grams":200,"kcal_per_100g":2}]}]</actions>"""
+        val foods = CoachActions.parse(raw, today).actions.single().foods
+        assertEquals(
+            listOf(Portion("1 small", 100.0), Portion("1 medium", 120.0), Portion("1 large", 150.0), Portion("200 g", 200.0)),
+            foods[0].portions,
+        )
+        assertEquals(120.0, foods[0].grams, 0.0)
+        assertTrue(foods[1].portions.isEmpty())
+    }
+
+    @Test
     fun summaryTellsTheCoachWhatHappened() {
         val a = CoachAction(ActionType.ADD_WATER, date = today.toString(), ml = 500)
         assertEquals("Add 500 ml of water: waiting for the user", CoachActions.summary(a))

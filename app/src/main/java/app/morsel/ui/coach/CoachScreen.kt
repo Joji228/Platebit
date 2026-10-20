@@ -62,6 +62,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.morsel.data.CoachMessage
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.KeyboardType
+import app.morsel.data.ActionFood
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.ui.graphics.Brush
@@ -80,6 +83,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.rounded.Block
@@ -132,6 +136,7 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
         onTyped = viewModel::typed,
         onAccept = viewModel::accept,
         onDecline = viewModel::decline,
+        onGrams = viewModel::setGrams,
     )
 }
 
@@ -154,6 +159,8 @@ fun CoachContent(
     /** Accept or Decline on a proposed change: the message it belongs to (by time) and its position. */
     onAccept: (Long, Int) -> Unit = { _, _ -> },
     onDecline: (Long, Int) -> Unit = { _, _ -> },
+    /** A new amount picked for one food on a card: message time, card position, food position, grams. */
+    onGrams: (Long, Int, Int, Double) -> Unit = { _, _, _, _ -> },
 ) {
     var input by rememberSaveable { mutableStateOf("") }
     var confirmNew by remember { mutableStateOf(false) }
@@ -234,7 +241,7 @@ fun CoachContent(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 360.dp)
+                    .heightIn(max = 440.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -244,6 +251,7 @@ fun CoachContent(
                         action,
                         onAccept = { last?.let { onAccept(it.at, index) } },
                         onDecline = { last?.let { onDecline(it.at, index) } },
+                        onGrams = { food, grams -> last?.let { onGrams(it.at, index, food, grams) } },
                     )
                 }
             }
@@ -396,7 +404,7 @@ private fun ErrorRow(message: String, onRetry: () -> Unit) {
 
 /** A change the coach offers to make, waiting for Accept or Decline. */
 @Composable
-private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () -> Unit) {
+private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () -> Unit, onGrams: (food: Int, grams: Double) -> Unit = { _, _ -> }) {
     val today = remember { LocalDate.now() }
     val deleting = action.type == ActionType.DELETE_MEAL
     // The accent colour, except for deleting, which is red so it can't be mistaken for logging.
@@ -456,14 +464,25 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
                         Spacer(Modifier.width(6.dp))
                         MacroChip("F", m.fat, Nutrient.Fat)
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        action.foods.joinToString(" · ") { "${it.name} ${it.grams.roundToInt()} g" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // Foods with amounts to choose from get a row of one-tap options; the rest
+                    // are listed as before.
+                    val fixed = action.foods.filter { it.portions.isEmpty() }
+                    if (fixed.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            fixed.joinToString(" · ") { "${it.name} ${it.grams.roundToInt()} g" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    action.foods.forEachIndexed { index, food ->
+                        if (food.portions.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            PortionPicker(food, tint, onPick = { onGrams(index, it) })
+                        }
+                    }
                     // Label values checked against the product database, not estimated.
                     if (action.foods.any { it.offCode != null }) {
                         Spacer(Modifier.height(8.dp))
@@ -509,6 +528,74 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
                     },
                 )
             }
+        }
+    }
+}
+
+/**
+ * "How much?" for one food: the coach's ready-made amounts as chips (the picked one in the accent
+ * colour), plus Other for typing any weight. Every pick updates the card's totals straight away.
+ */
+
+@Composable
+private fun PortionPicker(food: ActionFood, tint: Color, onPick: (Double) -> Unit) {
+    var typing by remember(food.name) { mutableStateOf(false) }
+    var typed by remember(food.name) { mutableStateOf("") }
+    val custom = food.portions.none { it.grams == food.grams }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(food.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f, fill = false))
+            Text(
+                "  ·  how much?",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        // One line per food, swiped sideways if the amounts don't all fit, so the card stays short
+        // enough to show Accept and Decline without scrolling.
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            food.portions.forEach { p ->
+                PortionChip(p.label, "${p.grams.roundToInt()} g", selected = !typing && p.grams == food.grams, tint) {
+                    typing = false
+                    onPick(p.grams)
+                }
+            }
+            PortionChip("Other", if (custom) "${food.grams.roundToInt()} g" else "grams", selected = typing || custom, tint) {
+                typing = true
+                typed = food.grams.roundToInt().toString()
+            }
+        }
+        if (typing) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = typed,
+                onValueChange = { value ->
+                    typed = value.filter { it.isDigit() }.take(4)
+                    typed.toDoubleOrNull()?.takeIf { it > 0 }?.let(onPick)
+                },
+                label = { Text("Grams") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.width(140.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PortionChip(label: String, grams: String, selected: Boolean, tint: Color, onClick: () -> Unit) {
+    // Name above, weight below: narrow enough that three amounts and Other share one line.
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) tint else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            Text(grams, style = MaterialTheme.typography.labelSmall.merge(Numeric), maxLines = 1)
         }
     }
 }

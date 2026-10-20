@@ -16,6 +16,10 @@ import app.morsel.data.ActionStatus
 import app.morsel.data.ActionType
 import app.morsel.data.CoachAction
 import app.morsel.data.CoachMessage
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performTextReplacement
+import app.morsel.data.ActionFood
+import app.morsel.data.Portion
 import app.morsel.ui.coach.CoachContent
 import app.morsel.ui.coach.CoachSuggestions
 import app.morsel.ui.coach.coachMarkup
@@ -103,6 +107,35 @@ class CoachUiTest {
         rule.runOnIdle {
             assertEquals(listOf(2L to 1), accepted)
             assertEquals(listOf(2L to 1), declined)
+        }
+    }
+
+    @Test
+    fun portionsArePickedWithOneTap() {
+        val banana = ActionFood(
+            "Banana", 120.0, 89.0, 1.1, 22.8, 0.3,
+            portions = listOf(Portion("1 small", 100.0), Portion("1 medium", 120.0), Portion("1 large", 150.0)),
+        )
+        val chat = listOf(
+            CoachMessage(true, "Log a banana", at = 1L),
+            CoachMessage(false, "Here's your banana.", at = 2L, actions = listOf(CoachAction(ActionType.LOG_FOOD, name = "Banana", mealType = "snack", foods = listOf(banana)))),
+        )
+        val picked = mutableListOf<List<Any>>()
+        rule.setContent {
+            MorselTheme(dark = true) {
+                CoachContent(
+                    chat, thinking = false, error = null, loaded = true, onSend = {}, onRetry = {}, onNewChat = {}, onBack = {},
+                    onGrams = { at, card, food, grams -> picked += listOf(at, card, food, grams) },
+                )
+            }
+        }
+        rule.onNodeWithText("107").assertIsDisplayed() // 120 g x 89 kcal / 100 g
+        rule.onNodeWithText("1 large").performClick()
+        rule.onNodeWithText("Other").performClick()
+        rule.onNode(hasSetTextAction() and hasText("Grams")).performTextReplacement("80")
+        rule.runOnIdle {
+            assertEquals(listOf(2L, 0, 0, 150.0), picked.first())
+            assertEquals(listOf(2L, 0, 0, 80.0), picked.last())
         }
     }
 

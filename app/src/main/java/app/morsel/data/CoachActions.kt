@@ -32,9 +32,15 @@ data class ActionFood(
     val fatPer100: Double,
     /** The Open Food Facts product these label values come from, when the coach looked it up. */
     val offCode: String? = null,
+    /** Amounts to pick from with one tap ("1 medium · 120 g"); [grams] is the one picked. */
+    val portions: List<Portion> = emptyList(),
 ) {
     val macros get() = Macros(kcalPer100, proteinPer100, carbsPer100, fatPer100) * (grams / 100.0)
 }
+
+/** A ready-made amount for a food on a coach card, e.g. "1 medium" = 120 g. */
+@Serializable
+data class Portion(val label: String, val grams: Double)
 
 /**
  * One proposed change. Only the fields its [type] needs are set; null [kcal] or [ml] on a target
@@ -69,6 +75,7 @@ data class CoachAction(
  */
 object CoachActions {
     const val MAX_ACTIONS = 5
+    const val MAX_PORTIONS = 4
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val block = Regex("""<actions>(.*?)(?:</actions>|$)""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
@@ -168,8 +175,23 @@ object CoachActions {
             carbsPer100 = (o.num("carbs_per_100g") ?: 0.0).coerceIn(0.0, 100.0),
             fatPer100 = (o.num("fat_per_100g") ?: 0.0).coerceIn(0.0, 100.0),
             offCode = o.str("off_code")?.trim()?.takeIf { it.isNotEmpty() && it.length <= 32 },
+            portions = portions(o),
         )
     }
+
+    /** Up to [MAX_PORTIONS] sensible amounts, each with a short label and a gram weight. */
+    private fun portions(o: JsonObject): List<Portion> =
+        o["portions"]?.let { runCatching { it.jsonArray }.getOrNull() }.orEmpty()
+            .mapNotNull { el ->
+                runCatching {
+                    val p = el.jsonObject
+                    val grams = p.num("grams")?.takeIf { it > 0 }?.coerceIn(1.0, 5_000.0) ?: return@runCatching null
+                    val label = p.str("label")?.oneLine()?.take(24)?.ifBlank { null } ?: "${grams.roundToInt()} g"
+                    Portion(label, grams.round(0))
+                }.getOrNull()
+            }
+            .distinctBy { it.grams }
+            .take(MAX_PORTIONS)
 
     /** Today when missing or unreadable; never in the future, never more than a year back. */
     private fun date(value: String?, today: LocalDate): LocalDate {

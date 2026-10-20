@@ -115,6 +115,15 @@ class CoachViewModel(private val app: AppContainer) : ViewModel() {
         }
     }
 
+    /** Picking another amount for one food on a card that's still waiting; the totals follow. */
+    fun setGrams(messageAt: Long, index: Int, foodIndex: Int, grams: Double) {
+        val action = actionAt(messageAt, index) ?: return
+        if (action.status != ActionStatus.PENDING || foodIndex !in action.foods.indices) return
+        val amount = grams.coerceIn(1.0, 5_000.0)
+        update(messageAt, index, action.copy(foods = action.foods.mapIndexed { i, f -> if (i == foodIndex) f.copy(grams = amount) else f }))
+        viewModelScope.launch { app.coach.save(messages.value) }
+    }
+
     fun decline(messageAt: Long, index: Int) {
         val action = actionAt(messageAt, index) ?: return
         if (action.status != ActionStatus.PENDING) return
