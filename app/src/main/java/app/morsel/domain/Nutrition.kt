@@ -55,6 +55,9 @@ enum class MealType(val title: String) {
         }
 
         fun parse(value: String?): MealType = entries.firstOrNull { it.name == value } ?: SNACK
+
+        /** The AI's suggestion ("dinner", "Snack"…), or null when it gave none we recognize. */
+        fun fromAi(value: String?): MealType? = entries.firstOrNull { it.name.equals(value?.trim(), ignoreCase = true) }
     }
 }
 

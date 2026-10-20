@@ -91,6 +91,8 @@ class ResultViewModel(private val app: AppContainer, private val mealId: Long) :
                 _state.value = ResultState(
                     loaded = true,
                     name = meal?.mealName.orEmpty(),
+                    // The AI's pick when it gave one (a chocolate bar is a snack whatever the time), else the time of day.
+                    mealType = MealType.fromAi(meal?.mealType) ?: MealType.forTime(),
                     items = meal?.items.orEmpty().map {
                         EditableItem(nextKey++, it.name, it.grams, it.kcalPer100, it.proteinPer100, it.carbsPer100, it.fatPer100)
                     },

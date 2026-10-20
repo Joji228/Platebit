@@ -1,6 +1,7 @@
 package app.morsel.ai
 
 import app.morsel.data.Provider
+import app.morsel.domain.MealType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -64,5 +65,16 @@ class AiResponsesTest {
         assertTrue(UrlPolicy.problem("http://172.32.0.1/v1")!!.contains("https"))
         assertTrue(UrlPolicy.problem("ftp://example.com") != null)
         assertTrue(UrlPolicy.problem("not a url") != null)
+    }
+
+    @Test
+    fun readsTheSuggestedMealType() {
+        val meal = AiResponses.parseMeal("""{"meal_name": "Chocolate bar", "meal_type": "Snack", "items": [], "confidence": "high", "notes": ""}""")
+        assertEquals("Snack", meal.mealType)
+        assertEquals(MealType.SNACK, MealType.fromAi(meal.mealType))
+        // Older answers without the field, or an unknown word, fall back to the time of day.
+        assertNull(MealType.fromAi(AiResponses.parseMeal("""{"meal_name": "Soup", "items": []}""").mealType))
+        assertNull(MealType.fromAi("brunch"))
+        assertEquals(MealType.DINNER, MealType.fromAi(" dinner "))
     }
 }
