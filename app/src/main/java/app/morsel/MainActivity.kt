@@ -229,7 +229,10 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
                 ) {
                     BottomBar(
                         scanSelected = onScan,
-                        onToday = { nav.switchTab(TodayRoute) },
+                        // Already on the diary looking at a past day? The tab brings you back to today.
+                        onToday = {
+                            if (onToday) container.viewedDay.value = container.clock.today.value else nav.switchTab(TodayRoute)
+                        },
                         onScan = { nav.switchTab(ScanRoute) },
                     )
                 }
@@ -426,7 +429,8 @@ private fun BottomBar(scanSelected: Boolean, onToday: () -> Unit, onScan: () -> 
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                BarItem(Icons.Rounded.SpaceDashboard, "Today", !scanSelected, onToday)
+                // "Diary" rather than "Today": it's right on every day you swipe back to.
+                BarItem(Icons.Rounded.SpaceDashboard, "Diary", !scanSelected, onToday)
                 BarItem(Icons.Rounded.CenterFocusStrong, "Scan", scanSelected, onScan)
             }
         }
