@@ -15,6 +15,7 @@ import app.morsel.data.formatBytes
 import app.morsel.data.ThemeMode
 import app.morsel.data.ThinkingLevel
 import app.morsel.domain.AdaptiveEstimate
+import app.morsel.ui.components.HapticsSetting
 import app.morsel.domain.Targets
 import app.morsel.domain.UserProfile
 import app.morsel.ui.theme.AccentColor
@@ -142,6 +143,15 @@ class SettingsViewModel(private val app: AppContainer) : ViewModel() {
     fun setUseFoodFacts(enabled: Boolean) = viewModelScope.launch { app.settings.setUseFoodFacts(enabled) }
 
     val coachEnabled = app.settings.coachEnabled
+
+    val hapticsEnabled = app.settings.hapticsEnabled
+
+    fun setHapticsEnabled(enabled: Boolean) = viewModelScope.launch {
+        // Applied at once so the click that confirms "on" (and the silence after "off") can't lag
+        // behind the saved setting.
+        HapticsSetting.enabled = enabled
+        app.settings.setHapticsEnabled(enabled)
+    }
 
     /** Turning the coach off also deletes its conversation. */
     fun setCoachEnabled(enabled: Boolean) = viewModelScope.launch {

@@ -81,8 +81,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -109,7 +107,7 @@ fun MorselCard(
     padding: Dp = 18.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -119,7 +117,7 @@ fun MorselCard(
                     onLongClick != null -> Modifier.combinedClickable(
                         onClick = { onClick?.invoke() },
                         onLongClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.click()
                             onLongClick()
                         },
                     )
@@ -212,10 +210,10 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: String? 
 
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Surface(
         onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptics.click()
             onClick()
         },
         enabled = enabled,

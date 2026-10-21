@@ -87,9 +87,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -315,10 +313,10 @@ fun DashboardScreen(
             }
         }
 
-        val haptics = LocalHapticFeedback.current
+        val haptics = rememberHaptics()
         Surface(
             onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptics.click()
                 onScan()
             },
             modifier = Modifier
@@ -710,7 +708,7 @@ private fun MealRow(meal: MealWithItems, onClick: () -> Unit, onDelete: () -> Un
                     val photo = meal.meal.photoPath
                     if (photo != null) {
                         var viewing by remember { mutableStateOf(false) }
-                        val haptics = LocalHapticFeedback.current
+                        val haptics = rememberHaptics()
                         AsyncImage(
                             model = File(photo),
                             contentDescription = "Meal photo",
@@ -721,7 +719,7 @@ private fun MealRow(meal: MealWithItems, onClick: () -> Unit, onDelete: () -> Un
                                 .combinedClickable(
                                     onClick = { viewing = true },
                                     onLongClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptics.click()
                                         menuOpen = true
                                     },
                                 ),

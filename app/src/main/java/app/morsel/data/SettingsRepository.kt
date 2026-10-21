@@ -34,6 +34,7 @@ data class SettingsBackup(
     val theme: String? = null,
     val accent: String? = null,
     val scaleEnabled: Boolean? = null,
+    val haptics: Boolean? = null,
     val primary: String? = null,
     val fallback: Boolean? = null,
     val fallbackProvider: String? = null,
@@ -58,6 +59,7 @@ class SettingsRepository(context: Context) {
     private val thinkingKey = stringPreferencesKey("deepseek_thinking")
     private val foodFactsKey = booleanPreferencesKey("use_food_facts")
     private val coachKey = booleanPreferencesKey("coach_enabled")
+    private val hapticsKey = booleanPreferencesKey("haptics_enabled")
     private val coachTutorialKey = booleanPreferencesKey("coach_tutorial_done")
     private val modelsMigratedKey = booleanPreferencesKey("models_auto_v2")
     private val fallbackOffKey = booleanPreferencesKey("fallback_off_v3")
@@ -78,6 +80,9 @@ class SettingsRepository(context: Context) {
 
     /** The Xiaomi scale integration is opt-in; off until the user turns it on in Settings. */
     val scaleEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[scaleKey] ?: false }
+
+    /** Vibration feedback on taps, switches and gestures: on unless the user turns it off. */
+    val hapticsEnabled: Flow<Boolean> = store.data.map { prefs -> prefs[hapticsKey] ?: true }.distinctUntilChanged()
 
     /** Open Food Facts lookups: on unless the user turns them off (since 1.1.7). */
     val useFoodFacts: Flow<Boolean> = store.data.map { prefs -> prefs[foodFactsKey] ?: true }
@@ -108,6 +113,7 @@ class SettingsRepository(context: Context) {
         theme = prefs[themeKey],
         accent = prefs[accentKey],
         scaleEnabled = prefs[scaleKey],
+        haptics = prefs[hapticsKey],
         primary = prefs[primaryKey],
         fallback = prefs[fallbackKey],
         fallbackProvider = prefs[fallbackProviderKey],
@@ -124,6 +130,7 @@ class SettingsRepository(context: Context) {
             backup.theme?.let { prefs[themeKey] = it }
             backup.accent?.let { prefs[accentKey] = it }
             backup.scaleEnabled?.let { prefs[scaleKey] = it }
+            backup.haptics?.let { prefs[hapticsKey] = it }
             backup.primary?.let { prefs[primaryKey] = it }
             backup.fallback?.let { prefs[fallbackKey] = it }
             backup.fallbackProvider?.let { prefs[fallbackProviderKey] = it }
@@ -211,6 +218,10 @@ class SettingsRepository(context: Context) {
     }
 
     /** Turning the coach on also brings back its one-time "pull down" hint. */
+    suspend fun setHapticsEnabled(enabled: Boolean) {
+        store.edit { it[hapticsKey] = enabled }
+    }
+
     suspend fun setCoachEnabled(enabled: Boolean) {
         store.edit {
             it[coachKey] = enabled

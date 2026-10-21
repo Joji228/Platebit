@@ -94,10 +94,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -105,12 +103,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.morsel.ui.components.PrimaryButton
 import app.morsel.ui.components.RoundIconButton
+import app.morsel.ui.components.rememberHaptics
 import coil3.compose.AsyncImage
 
 @Composable
 fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Unit) {
     val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     var hasPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
@@ -133,7 +132,7 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
 
     /** Takes a photo: shutter flash and haptic right away, added to the photos once it's saved. */
     fun capture() {
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        haptics.click()
         scope.launch {
             flash.snapTo(0.8f)
             flash.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
@@ -267,7 +266,7 @@ fun ScanScreen(viewModel: ScanViewModel, onResult: () -> Unit, onToday: () -> Un
                         barcodes = foodFactsOn,
                         onBarcode = if (watchBarcodes) {
                             { code ->
-                                if (viewModel.barcodeSeen(code, onResult)) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (viewModel.barcodeSeen(code, onResult)) haptics.click()
                             }
                         } else {
                             null

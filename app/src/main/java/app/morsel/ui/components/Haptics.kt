@@ -20,15 +20,24 @@ import androidx.compose.ui.platform.LocalView
 @Stable
 class Haptics(private val view: View) {
     fun tick() {
-        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        if (HapticsSetting.enabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
     }
 
     fun click() {
-        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        if (HapticsSetting.enabled) view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
     /** A switch: firm when it goes on, light when it goes off, so the two feel different. */
     fun toggle(on: Boolean) = if (on) click() else tick()
+}
+
+/**
+ * Settings → Haptic feedback, mirrored here so every [Haptics] (and any gesture code holding one
+ * for a long time) sees the current choice without being rebuilt. AppContainer keeps it in sync.
+ */
+object HapticsSetting {
+    @Volatile
+    var enabled: Boolean = true
 }
 
 @Composable

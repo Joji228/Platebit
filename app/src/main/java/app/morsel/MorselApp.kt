@@ -13,6 +13,7 @@ import app.morsel.data.PhotoStore
 import app.morsel.data.PlanRepository
 import app.morsel.data.SettingsRepository
 import app.morsel.data.StorageInfo
+import app.morsel.ui.components.HapticsSetting
 import app.morsel.data.db.MorselDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,11 @@ class AppContainer(context: Context) {
                 }
             }
         }
+    }
+
+    init {
+        // Settings → Haptic feedback decides whether anything in the app vibrates.
+        scope.launch { settings.hapticsEnabled.collect { HapticsSetting.enabled = it } }
     }
 
     init {

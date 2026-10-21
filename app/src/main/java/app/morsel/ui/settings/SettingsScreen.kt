@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -251,6 +252,22 @@ fun SettingsScreen(
                         },
                         {
                             AccentPicker(state.accent, viewModel::setAccent, Modifier.padding(14.dp))
+                        },
+                        {
+                            val hapticsOn by viewModel.hapticsEnabled.collectAsStateWithLifecycle(initialValue = true)
+                            val haptics = rememberHaptics()
+                            SwitchRow(
+                                title = "Haptic feedback",
+                                subtitle = if (hapticsOn) "On. Taps, switches and gestures vibrate" else "Off. Nothing vibrates",
+                                checked = hapticsOn,
+                                onChange = { on ->
+                                    viewModel.setHapticsEnabled(on)
+                                    // Turning it on confirms itself; turning it off is silent.
+                                    if (on) haptics.click()
+                                },
+                                icon = Icons.Rounded.Vibration,
+                                haptic = false,
+                            )
                         },
                     ),
                 )
@@ -561,11 +578,13 @@ internal fun SwitchRow(
     onChange: (Boolean) -> Unit,
     icon: ImageVector? = null,
     iconTint: Color = MaterialTheme.colorScheme.primary,
+    /** False for the haptics switch itself, which plays (or withholds) its own feedback. */
+    haptic: Boolean = true,
 ) {
     // Firm when a switch goes on, light when it goes off, whether the row or the switch was tapped.
     val haptics = rememberHaptics()
     val change = { on: Boolean ->
-        haptics.toggle(on)
+        if (haptic) haptics.toggle(on)
         onChange(on)
     }
     Row(
