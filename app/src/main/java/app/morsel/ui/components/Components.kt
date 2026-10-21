@@ -272,10 +272,10 @@ fun RoundIconButton(
     container: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     content: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Surface(
         onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            haptics.tick()
             onClick()
         },
         modifier = modifier.size(size),
@@ -298,13 +298,13 @@ fun <T> PillSelector(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { option ->
             val isSelected = option == selected
             Surface(
                 onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    haptics.tick()
                     onSelect(option)
                 },
                 modifier = Modifier
@@ -445,7 +445,7 @@ fun Modifier.repeatOnHold(
     onPressedChange: (Boolean) -> Unit = {},
     onStep: () -> Unit,
 ): Modifier {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val step by rememberUpdatedState(onStep)
     val pressedChanged by rememberUpdatedState(onPressedChange)
     return pointerInput(firstDelayMs, startIntervalMs, minIntervalMs) {
@@ -453,14 +453,14 @@ fun Modifier.repeatOnHold(
             awaitEachGesture {
                 awaitFirstDown()
                 pressedChanged(true)
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptics.tick()
                 step()
                 val repeater = launch {
                     delay(firstDelayMs)
                     var interval = startIntervalMs
                     while (isActive) {
                         step()
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        haptics.tick()
                         delay(interval)
                         interval = (interval * 0.88).toLong().coerceAtLeast(minIntervalMs)
                     }

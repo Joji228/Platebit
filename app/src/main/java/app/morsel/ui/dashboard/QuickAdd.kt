@@ -70,6 +70,7 @@ import app.morsel.data.FoodFact
 import app.morsel.domain.MealType
 import app.morsel.ui.components.PillSelector
 import app.morsel.ui.components.RoundIconButton
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.components.format
 import app.morsel.ui.theme.Numeric
 import kotlinx.coroutines.CancellationException
@@ -360,8 +361,14 @@ private fun NumberBox(label: String, value: String, onChange: (String) -> Unit, 
 
 @Composable
 private fun LogButton(enabled: Boolean, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
     Surface(
-        onClick = { if (enabled) onClick() },
+        onClick = {
+            if (enabled) {
+                haptics.click()
+                onClick()
+            }
+        },
         enabled = enabled,
         shape = RoundedCornerShape(50),
         color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,

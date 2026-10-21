@@ -57,8 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,14 +80,12 @@ import app.morsel.ui.coach.CoachHint
 import app.morsel.ui.coach.CoachPullBubble
 import app.morsel.ui.coach.CoachScreen
 import app.morsel.ui.coach.CoachViewModel
-import app.morsel.ui.coach.coachArmTick
-import app.morsel.ui.coach.coachPopTap
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.coach.coachPull
 import app.morsel.ui.coach.rememberCoachPull
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import app.morsel.ui.dashboard.DashboardScreen
@@ -197,7 +193,7 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
     val coachHere = onToday || onScan || destination?.hasRoute<BodyRoute>() == true || destination?.hasRoute<ResultRoute>() == true
     LaunchedEffect(coachOn) { if (!coachOn) coachOpen = false }
     val pull = rememberCoachPull()
-    val view = LocalView.current
+    val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
 
     Box(
@@ -206,9 +202,10 @@ private fun MorselNavHost(container: AppContainer, start: Any) {
             .coachPull(
                 pull,
                 enabled = coachOn && coachHere && !coachOpen,
-                onArm = { view.coachArmTick() },
+                // A light tick when the pull reaches the line, a firm click when the bubble pops.
+                onArm = { haptics.tick() },
                 onPop = {
-                    view.coachPopTap()
+                    haptics.click()
                     // A beat for the pop to show before the chat slides down over it.
                     scope.launch {
                         delay(40)
@@ -439,10 +436,10 @@ private fun BottomBar(scanSelected: Boolean, onToday: () -> Unit, onScan: () -> 
 
 @Composable
 private fun BarItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Surface(
         onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            haptics.tick()
             onClick()
         },
         shape = RoundedCornerShape(18.dp),

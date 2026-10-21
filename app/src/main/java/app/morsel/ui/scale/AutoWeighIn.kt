@@ -63,6 +63,7 @@ import app.morsel.ble.WeighInDetector
 import app.morsel.domain.BodyCompositionCalc
 import app.morsel.ui.components.ProgressLine
 import app.morsel.ui.components.RoundIconButton
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.theme.Numeric
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -89,6 +90,7 @@ fun AutoWeighIn(container: AppContainer, onOpenBody: () -> Unit) {
     val enabled by container.settings.scaleEnabled.collectAsStateWithLifecycle(initialValue = false)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
 
     var kg by remember { mutableStateOf<Double?>(null) }
     var stage by remember { mutableStateOf(Stage.WEIGHING) }
@@ -105,6 +107,8 @@ fun AutoWeighIn(container: AppContainer, onOpenBody: () -> Unit) {
         val profile = container.plans.plan.first().profile
         val composition = profile?.let { BodyCompositionCalc.compute(done.kg, done.impedance, it) }
         container.repository.logScaleWeighIn(done.kg, done.impedance, composition)
+        // The weigh-in is in: a firm click, even when you're standing on the scale looking elsewhere.
+        haptics.click()
         // Let the finished dial and full bar register, then go straight to the analysis.
         delay(700)
         val show = !dismissed

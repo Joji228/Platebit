@@ -102,6 +102,7 @@ import app.morsel.data.Provider
 import app.morsel.data.ThinkingLevel
 import app.morsel.ui.components.Pill
 import app.morsel.ui.components.RoundIconButton
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.theme.Numeric
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -117,6 +118,7 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val balance by viewModel.balance.collectAsStateWithLifecycle()
     val ai = state.ai
+    val haptics = rememberHaptics()
 
     var serviceSheet by remember { mutableStateOf<Provider?>(null) }
     var keySheet by remember { mutableStateOf<Provider?>(null) }
@@ -186,7 +188,10 @@ fun AiSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             item {
                 if (ai.addableEngines.isNotEmpty()) {
                     Surface(
-                        onClick = viewModel::addEngine,
+                        onClick = {
+                            haptics.tick()
+                            viewModel.addEngine()
+                        },
                         shape = RoundedCornerShape(18.dp),
                         color = Color.Transparent,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -389,10 +394,16 @@ private fun BalanceCard(provider: Provider, ai: AiSettings, state: BalanceState,
 
 @Composable
 private fun RefreshButton(spinning: Boolean, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
     val turn = rememberInfiniteTransition(label = "refresh")
     val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "angle")
     Surface(
-        onClick = { if (!spinning) onClick() },
+        onClick = {
+            if (!spinning) {
+                haptics.tick()
+                onClick()
+            }
+        },
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.size(40.dp),
@@ -426,8 +437,13 @@ private fun EngineCard(
 ) {
     val used = provider == ai.primary
     val primary = MaterialTheme.colorScheme.primary
+    val haptics = rememberHaptics()
     Surface(
-        onClick = onUse,
+        onClick = {
+            // Picking an engine is a real change; tapping the one already in use isn't.
+            if (!used) haptics.click()
+            onUse()
+        },
         shape = RoundedCornerShape(22.dp),
         color = if (used) primary.copy(alpha = 0.07f).compositeOver(MaterialTheme.colorScheme.surfaceContainer) else MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(if (used) 1.5.dp else 1.dp, if (used) primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
@@ -592,8 +608,12 @@ private fun Sheet(
 @Composable
 private fun Option(title: String, subtitle: String? = null, selected: Boolean, enabled: Boolean = true, badge: String? = null, onClick: () -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
+    val haptics = rememberHaptics()
     Surface(
-        onClick = onClick,
+        onClick = {
+            haptics.tick()
+            onClick()
+        },
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
         color = if (selected) primary.copy(alpha = 0.14f) else Color.Transparent,
@@ -685,8 +705,12 @@ private fun KeySheet(provider: Provider, initialKey: String, initialUrl: String,
 
 @Composable
 private fun SheetButton(label: String, filled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
     Surface(
-        onClick = onClick,
+        onClick = {
+            haptics.click()
+            onClick()
+        },
         shape = RoundedCornerShape(16.dp),
         color = if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
@@ -823,8 +847,12 @@ private fun ModelSheet(provider: Provider, selected: String, viewModel: Settings
 /** A small pill toggle, filled with the accent colour when on. */
 @Composable
 private fun FilterChipButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
     Surface(
-        onClick = onClick,
+        onClick = {
+            haptics.tick()
+            onClick()
+        },
         shape = RoundedCornerShape(50),
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,

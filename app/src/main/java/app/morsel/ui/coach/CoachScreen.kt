@@ -69,7 +69,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import app.morsel.ui.theme.Numeric
@@ -103,6 +102,7 @@ import app.morsel.data.CoachAction
 import app.morsel.data.CoachActions
 import java.time.LocalDate
 import app.morsel.ui.components.Pill
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.components.RoundIconButton
 
 private const val TYPE_CHARS_PER_SECOND = 140L
@@ -164,6 +164,7 @@ fun CoachContent(
 ) {
     var input by rememberSaveable { mutableStateOf("") }
     var confirmNew by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
     val listState = rememberLazyListState()
     val rows = messages.size + (if (thinking || error != null) 1 else 0)
     // Each new message scrolls to its start, so a long answer is read from the top.
@@ -276,6 +277,7 @@ fun CoachContent(
             text = { Text("The whole conversation is deleted and the coach starts fresh. Your meals, weigh-ins and everything else in the app stay as they are.") },
             confirmButton = {
                 TextButton(onClick = {
+                    haptics.click()
                     confirmNew = false
                     onNewChat()
                 }) { Text("Clear chat", color = MaterialTheme.colorScheme.error) }
@@ -414,7 +416,7 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
             if (it == today.minusDays(1)) "Yesterday" else it.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
         }
     }
-    val view = LocalView.current
+    val haptics = rememberHaptics()
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -515,7 +517,10 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
                     container = MaterialTheme.colorScheme.surfaceContainerHighest,
                     content = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
-                    onClick = onDecline,
+                    onClick = {
+                        haptics.tick()
+                        onDecline()
+                    },
                 )
                 CardButton(
                     if (deleting) "Delete" else "Accept", Icons.Rounded.Check,
@@ -523,7 +528,7 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
                     content = if (deleting) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        view.coachPopTap()
+                        haptics.click()
                         onAccept()
                     },
                 )
@@ -539,6 +544,7 @@ private fun ActionCard(action: CoachAction, onAccept: () -> Unit, onDecline: () 
 
 @Composable
 private fun PortionPicker(food: ActionFood, tint: Color, onPick: (Double) -> Unit) {
+    val haptics = rememberHaptics()
     var typing by remember(food.name) { mutableStateOf(false) }
     var typed by remember(food.name) { mutableStateOf("") }
     val custom = food.portions.none { it.grams == food.grams }
@@ -557,11 +563,13 @@ private fun PortionPicker(food: ActionFood, tint: Color, onPick: (Double) -> Uni
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             food.portions.forEach { p ->
                 PortionChip(p.label, "${p.grams.roundToInt()} g", selected = !typing && p.grams == food.grams, tint) {
+                    haptics.tick()
                     typing = false
                     onPick(p.grams)
                 }
             }
             PortionChip("Other", if (custom) "${food.grams.roundToInt()} g" else "grams", selected = typing || custom, tint) {
+                haptics.tick()
                 typing = true
                 typed = food.grams.roundToInt().toString()
             }

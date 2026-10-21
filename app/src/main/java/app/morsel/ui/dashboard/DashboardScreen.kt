@@ -80,6 +80,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -105,6 +106,7 @@ import app.morsel.ui.components.Pill
 import app.morsel.ui.components.PrimaryButton
 import app.morsel.ui.components.ProgressLine
 import app.morsel.ui.components.RoundIconButton
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.components.SecondaryButton
 import app.morsel.ui.components.SectionTitle
 import app.morsel.ui.components.WeightChart
@@ -215,6 +217,15 @@ fun DashboardScreen(
     val listState = rememberLazyListState()
     val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay, pastToday = onScan) }
     swipe.canGoNext = state.date < state.today
+    // A light tick each time the day on screen changes: a swipe, the arrows, or the Diary tab.
+    val dayHaptics = rememberHaptics()
+    var shownDay by remember { mutableStateOf(state.date) }
+    LaunchedEffect(state.date) {
+        if (state.date != shownDay) {
+            shownDay = state.date
+            dayHaptics.tick()
+        }
+    }
 
     Box(
         Modifier
@@ -813,6 +824,7 @@ private fun EmptyMeals(isToday: Boolean, onScan: () -> Unit, onAdd: () -> Unit) 
 @Composable
 private fun WeightDialog(initial: Double, day: String, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
     var kg by remember { mutableDoubleStateOf(initial) }
+    val haptics = rememberHaptics()
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -828,7 +840,12 @@ private fun WeightDialog(initial: Double, day: String, onDismiss: () -> Unit, on
                 decimals = 1,
             )
         },
-        confirmButton = { TextButton(onClick = { onSave(kg) }) { Text("Save") } },
+        confirmButton = {
+            TextButton(onClick = {
+                haptics.click()
+                onSave(kg)
+            }) { Text("Save") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

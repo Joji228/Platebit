@@ -87,14 +87,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import app.morsel.ui.theme.AccentColor
 import app.morsel.domain.Sex
 import app.morsel.ui.components.GroupedList
 import app.morsel.ui.components.ListRow
 import app.morsel.ui.components.NumberStepper
+import app.morsel.ui.components.rememberHaptics
 import app.morsel.ui.components.PillSelector
 import app.morsel.ui.components.RoundIconButton
 import app.morsel.ui.components.format
@@ -563,10 +562,16 @@ internal fun SwitchRow(
     icon: ImageVector? = null,
     iconTint: Color = MaterialTheme.colorScheme.primary,
 ) {
+    // Firm when a switch goes on, light when it goes off, whether the row or the switch was tapped.
+    val haptics = rememberHaptics()
+    val change = { on: Boolean ->
+        haptics.toggle(on)
+        onChange(on)
+    }
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable { onChange(!checked) }
+            .clickable { change(!checked) }
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -590,7 +595,7 @@ internal fun SwitchRow(
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onChange,
+            onCheckedChange = change,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                 checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -650,7 +655,7 @@ internal fun GroupLabel(text: String) {
 /** The accent colors in one row; the chosen one carries a check mark and a ring. */
 @Composable
 private fun AccentPicker(selected: AccentColor, onSelect: (AccentColor) -> Unit, modifier: Modifier = Modifier) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -675,7 +680,7 @@ private fun AccentPicker(selected: AccentColor, onSelect: (AccentColor) -> Unit,
                                 selected = isSelected,
                                 role = Role.RadioButton,
                                 onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    haptics.tick()
                                     onSelect(accent)
                                 },
                             ),

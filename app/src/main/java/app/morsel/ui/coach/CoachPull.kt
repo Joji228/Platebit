@@ -1,8 +1,5 @@
 package app.morsel.ui.coach
 
-import android.os.Build
-import android.view.HapticFeedbackConstants
-import android.view.View
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -212,16 +209,6 @@ fun Modifier.coachPull(state: CoachPull, enabled: Boolean, onArm: () -> Unit, on
             }
         }
     }
-}
-
-/** The light tick when the pull crosses the line. */
-fun View.coachArmTick() {
-    performHapticFeedback(if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE else HapticFeedbackConstants.CLOCK_TICK)
-}
-
-/** The firmer tap when the bubble pops. */
-fun View.coachPopTap() {
-    performHapticFeedback(HapticFeedbackConstants.CONFIRM)
 }
 
 /**
