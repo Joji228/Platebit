@@ -548,24 +548,10 @@ private fun WeightCard(
     val current = state.currentWeight ?: profile.startWeightKg
     val change = current - profile.startWeightKg
     val towardsGoal = (profile.goalWeightKg - profile.startWeightKg) * change >= 0
-    val trend = state.plan.trend
-    // The line starts at the starting weight, so the very first weigh-in already shows progress
-    // (100 → 99.5 draws a line, not a lone dot). When that weigh-in is on the start day itself,
-    // the start sits half a day earlier so the two points don't stack. Weigh-ins older than the
-    // start date tell the story on their own, so no start point is added then.
     val startDate = runCatching { LocalDate.parse(profile.startDate) }.getOrNull()
-    val firstDay = trend.firstOrNull()?.date
-    val startX = when {
-        firstDay == null -> (startDate ?: LocalDate.now()).toEpochDay().toDouble()
-        startDate == null || startDate.isAfter(firstDay) -> null
-        startDate == firstDay -> firstDay.toEpochDay() - 0.5
-        else -> startDate.toEpochDay().toDouble()
+    val chart = remember(state.plan.trend, startDate, profile.startWeightKg, state.today) {
+        weightLine(state.plan.trend, startDate, profile.startWeightKg, state.today)
     }
-    val trendLine = buildList {
-        startX?.let { add(it to profile.startWeightKg) }
-        trend.forEach { add(it.date.toEpochDay().toDouble() to it.trend) }
-    }
-    val readings = trend.map { it.date.toEpochDay().toDouble() to it.raw }
     // With the scale turned on, tapping anywhere outside the buttons opens the Body screen.
     MorselCard(onClick = if (scaleEnabled) onOpen else null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -589,16 +575,16 @@ private fun WeightCard(
         Spacer(Modifier.height(14.dp))
         Box(contentAlignment = Alignment.Center) {
             WeightChart(
-                trend = trendLine,
-                readings = readings,
+                line = chart.points,
+                weighIns = chart.weighIns,
                 goal = profile.goalWeightKg,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(96.dp),
             )
-            if (trendLine.size < 2) {
+            if (!chart.isLine) {
                 Text(
-                    "Log your weight to see your progress",
+                    if (chart.hasWeighIns) "Log another weigh-in to draw your line" else "Log your weight to see your progress",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
@@ -607,10 +593,10 @@ private fun WeightCard(
                 )
             }
         }
-        if (trend.isNotEmpty() && trendLine.size >= 2) {
+        if (chart.hasWeighIns && chart.isLine) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "Line is your smoothed trend · dots are weigh-ins",
+                if (chart.windowed) "Last $WINDOW_DAYS days · Line joins your weigh-ins" else "Line joins your weigh-ins · Trend smooths daily swings",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -602,26 +602,26 @@ fun ListRow(
 }
 
 /**
- * Weight over time: the smoothed [trend] as a line with a soft fill, raw [readings] as faint dots,
- * and a dashed goal line. X values are epoch days (fractions allowed).
+ * Weight over time: a [line] through the weigh-ins with a soft fill, a dot on each of the
+ * [weighIns] (they sit on the line), a bigger dot on the latest point, and a dashed goal line.
+ * X values are epoch days (fractions allowed).
  */
 @Composable
 fun WeightChart(
-    trend: List<Pair<Double, Double>>,
-    readings: List<Pair<Double, Double>>,
+    line: List<Pair<Double, Double>>,
+    weighIns: List<Pair<Double, Double>>,
     goal: Double,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val points = trend
+    val points = line
     val grid = MaterialTheme.colorScheme.outlineVariant
     val goalColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     Canvas(modifier) {
         if (points.isEmpty()) return@Canvas
         // Zoom to your own readings so small changes are visible; the goal line is drawn only
         // when it falls inside that range (the goal value is shown under the chart anyway).
-        val values = points.map { it.second } + readings.map { it.second }
+        val values = points.map { it.second } + weighIns.map { it.second }
         val pad = maxOf(0.6, (values.max() - values.min()) * 0.15)
         val min = values.min() - pad
         val max = values.max() + pad
@@ -642,25 +642,33 @@ fun WeightChart(
             )
         }
 
-        val line = Path()
+        val path = Path()
         points.forEachIndexed { index, (t, v) ->
-            if (index == 0) line.moveTo(x(t), y(v)) else line.lineTo(x(t), y(v))
+            if (index == 0) path.moveTo(x(t), y(v)) else path.lineTo(x(t), y(v))
         }
         if (points.size > 1) {
             val fill = Path().apply {
-                addPath(line)
+                addPath(path)
                 lineTo(x(t1), size.height)
                 lineTo(x(t0), size.height)
                 close()
             }
             drawPath(fill, Brush.verticalGradient(listOf(color.copy(alpha = 0.28f), color.copy(alpha = 0f))))
-            readings.forEach { (t, v) -> drawCircle(dotColor, radius = 2.5.dp.toPx(), center = Offset(x(t), y(v))) }
-            drawPath(line, color, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(path, color, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            // A dot on every weigh-in, on the line. A long history would just thicken the line, so
+            // past this many only the latest one is marked.
+            if (weighIns.size <= MAX_WEIGH_IN_DOTS) {
+                // Smaller when they're packed close together.
+                val radius = (if (weighIns.size > 35) 2.2.dp else 3.2.dp).toPx()
+                weighIns.forEach { (t, v) -> drawCircle(color, radius = radius, center = Offset(x(t), y(v))) }
+            }
         }
         val last = points.last()
         drawCircle(color, radius = 4.5.dp.toPx(), center = Offset(x(last.first), y(last.second)))
     }
 }
+
+private const val MAX_WEIGH_IN_DOTS = 60
 
 @Composable
 fun Pill(text: String, color: Color, modifier: Modifier = Modifier) {
