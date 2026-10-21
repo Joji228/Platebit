@@ -215,15 +215,6 @@ fun DashboardScreen(
     val listState = rememberLazyListState()
     val swipe = remember { DaySwipe(scope, listState, viewModel::previousDay, viewModel::nextDay, pastToday = onScan) }
     swipe.canGoNext = state.date < state.today
-    // A light tick each time the day on screen changes: a swipe, the arrows, or the Diary tab.
-    val dayHaptics = rememberHaptics()
-    var shownDay by remember { mutableStateOf(state.date) }
-    LaunchedEffect(state.date) {
-        if (state.date != shownDay) {
-            shownDay = state.date
-            dayHaptics.tick()
-        }
-    }
 
     Box(
         Modifier

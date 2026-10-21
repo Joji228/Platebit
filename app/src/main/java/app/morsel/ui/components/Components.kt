@@ -270,12 +270,8 @@ fun RoundIconButton(
     container: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     content: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    val haptics = rememberHaptics()
     Surface(
-        onClick = {
-            haptics.tick()
-            onClick()
-        },
+        onClick = onClick,
         modifier = modifier.size(size),
         shape = CircleShape,
         color = container,

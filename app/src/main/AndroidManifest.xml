@@ -5,6 +5,7 @@
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Reads the smart scale's Bluetooth broadcasts. It never locates the phone. -->
